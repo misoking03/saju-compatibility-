@@ -44,7 +44,6 @@ const SavedResultsList = ({ onLoadResult, onBack }) => {
         {savedResults.length === 0 ? (
           <div className="empty-state">
             <p>저장된 결과가 없습니다.</p>
-            <p className="empty-hint">결과 페이지에서 저장 버튼을 눌러 결과를 저장하세요.</p>
           </div>
         ) : (
           <div className="results-list">

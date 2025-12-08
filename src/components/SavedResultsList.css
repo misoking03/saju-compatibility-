@@ -75,6 +75,7 @@
 .empty-state p {
   margin: 10px 0;
   font-size: 16px;
+  color: white;
 }
 
 .empty-hint {
