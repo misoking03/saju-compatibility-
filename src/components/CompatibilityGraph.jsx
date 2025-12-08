@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { calculateDayStem, calculateDayStemLunar, calculateRelationship } from '../utils/saju';
+import html2canvas from 'html2canvas';
 import './CompatibilityGraph.css';
 
 const CompatibilityGraph = ({ friends, onBack }) => {
@@ -201,54 +202,33 @@ const CompatibilityGraph = ({ friends, onBack }) => {
   };
 
   // 이미지 저장 함수
-  const handleSaveImage = useCallback(() => {
+  const handleSaveImage = useCallback(async () => {
     if (!containerRef.current) return;
 
     try {
       const container = containerRef.current;
-      const svg = svgRef.current;
       
-      if (!svg) {
-        alert('그래프를 불러오는 중입니다. 잠시 후 다시 시도해주세요.');
-        return;
-      }
-
-      // SVG를 문자열로 변환
-      const svgData = new XMLSerializer().serializeToString(svg);
-      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-      const url = URL.createObjectURL(svgBlob);
-
-      // Canvas로 변환
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = container.offsetWidth;
-        canvas.height = container.offsetHeight;
-        const ctx = canvas.getContext('2d');
-        
-        // 흰색 배경
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
-        // SVG 이미지 그리기
-        ctx.drawImage(img, 0, 0);
-        
-        // JPG로 변환
-        canvas.toBlob((blob) => {
-          if (blob) {
-            const downloadUrl = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.download = `사주궁합분석_${new Date().getTime()}.jpg`;
-            link.href = downloadUrl;
-            link.click();
-            URL.revokeObjectURL(downloadUrl);
-            URL.revokeObjectURL(url);
-          } else {
-            alert('이미지 저장에 실패했습니다.');
-          }
-        }, 'image/jpeg', 0.9);
-      };
-      img.src = url;
+      // html2canvas로 전체 컨테이너 캡처 (노드박스 포함)
+      const canvas = await html2canvas(container, {
+        backgroundColor: '#ffffff',
+        scale: 2, // 고해상도
+        logging: false,
+        useCORS: true,
+      });
+      
+      // JPG로 변환
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const downloadUrl = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.download = `사주궁합분석_${new Date().getTime()}.jpg`;
+          link.href = downloadUrl;
+          link.click();
+          URL.revokeObjectURL(downloadUrl);
+        } else {
+          alert('이미지 저장에 실패했습니다.');
+        }
+      }, 'image/jpeg', 0.9);
     } catch (error) {
       console.error('이미지 저장 실패:', error);
       alert('이미지 저장 중 오류가 발생했습니다.');
