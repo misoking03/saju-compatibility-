@@ -317,6 +317,19 @@
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
 }
 
+.popup-content-storytelling {
+  background: white;
+  border-radius: 24px;
+  padding: 32px 24px;
+  max-width: 560px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  position: relative;
+  animation: slideUp 0.3s;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
 @keyframes slideUp {
   from {
     transform: translateY(20px);
@@ -432,6 +445,202 @@
   padding-top: 10px;
   border-top: 1px solid #e0e0e0;
   font-style: italic;
+}
+
+/* 스토리텔링형 팝업 스타일 */
+.popup-profiles {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.popup-profile-card {
+  background: #f8f9fa;
+  border-radius: 16px;
+  padding: 16px;
+  border: 1px solid #e9ecef;
+}
+
+.profile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.profile-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: #333;
+  font-family: 'Pretendard', sans-serif;
+}
+
+.profile-ilju {
+  font-size: 16px;
+  font-weight: 600;
+  color: #667eea;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.profile-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wuxing-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1.5px solid;
+  font-family: 'Pretendard', sans-serif;
+}
+
+.wuxing-badge.strong {
+  font-weight: 700;
+}
+
+.wuxing-badge.weak {
+  opacity: 0.8;
+}
+
+.popup-relationship-badge-center {
+  display: flex;
+  justify-content: center;
+  margin: 8px 0;
+}
+
+.relationship-badge-storytelling {
+  padding: 10px 24px;
+  border-radius: 24px;
+  font-weight: 700;
+  font-size: 18px;
+  color: white;
+  font-family: 'Pretendard', sans-serif;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.relationship-badge-storytelling.score-4 {
+  background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+}
+
+.relationship-badge-storytelling.score-3 {
+  background: linear-gradient(135deg, #8BC34A 0%, #7cb342 100%);
+}
+
+.relationship-badge-storytelling.score-2 {
+  background: linear-gradient(135deg, #FFC107 0%, #ffb300 100%);
+}
+
+.relationship-badge-storytelling.score-1 {
+  background: linear-gradient(135deg, #FF9800 0%, #f57c00 100%);
+}
+
+.relationship-badge-storytelling.score-0 {
+  background: linear-gradient(135deg, #F44336 0%, #d32f2f 100%);
+}
+
+.popup-unified-section {
+  margin: 24px 0;
+  padding: 24px;
+  background: linear-gradient(135deg, #f5f7fa 0%, #e9ecef 100%);
+  border-radius: 16px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.catchphrase-text {
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+  line-height: 1.5;
+  margin: 0;
+  white-space: pre-line;
+  font-family: 'Pretendard', sans-serif;
+}
+
+.score-display {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.score-number {
+  font-size: 48px;
+  font-weight: 800;
+  color: #667eea;
+  font-family: 'Pretendard', sans-serif;
+  line-height: 1;
+}
+
+.score-max {
+  font-size: 24px;
+  font-weight: 600;
+  color: #999;
+  font-family: 'Pretendard', sans-serif;
+}
+
+.hashtags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.hashtag {
+  padding: 6px 14px;
+  background: white;
+  border: 1.5px solid #667eea;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #667eea;
+  font-family: 'Pretendard', sans-serif;
+}
+
+.popup-analysis {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.analysis-card {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 18px;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.analysis-card:hover {
+  transform: translateX(4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.analysis-question {
+  font-size: 15px;
+  font-weight: 700;
+  color: #667eea;
+  margin-bottom: 10px;
+  font-family: 'Pretendard', sans-serif;
+}
+
+.analysis-answer {
+  font-size: 14px;
+  line-height: 1.7;
+  color: #555;
+  font-family: 'Pretendard', sans-serif;
 }
 
 .title-input-group {

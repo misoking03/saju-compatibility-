@@ -131,8 +131,7 @@ const FriendForm = ({ onAddFriend, friends, onRemoveFriend, onStartAnalysis, onS
 
           <div className="form-group">
             <input
-              type="tel"
-              inputMode="numeric"
+              type="text"
               value={birthdate}
               onChange={handleBirthdateChange}
               placeholder="생년월일"

@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { calculateDayStem, calculateDayStemLunar, calculateRelationship } from '../utils/saju';
-import html2canvas from 'html2canvas';
+import { calculateDayStem, calculateDayStemLunar, calculateFullSaju, calculateCompatibilityScore, getCompatibilityLabel, getCompatibilityStyle } from '../utils/saju';
 import './CompatibilityGraph.css';
 
 const CompatibilityGraph = ({ friends, onBack }) => {
@@ -21,32 +20,310 @@ const CompatibilityGraph = ({ friends, onBack }) => {
     '수': '💧',
   };
 
-  // 친구 데이터에 일간 추가
-  const friendsWithStem = friends.map(friend => ({
-    ...friend,
-    dayStem: friend.isLunar
-      ? calculateDayStemLunar(friend.year, friend.month, friend.day)
-      : calculateDayStem(friend.year, friend.month, friend.day),
-  }));
+  // 오행 한글명 매핑
+  const wuxingNames = {
+    '목': '목',
+    '화': '화',
+    '토': '토',
+    '금': '금',
+    '수': '수',
+  };
 
-  // 모든 관계 계산
+  // 오행 색상 매핑
+  const wuxingColors = {
+    '목': '#4CAF50', // 초록
+    '화': '#F44336', // 빨강
+    '토': '#FFC107', // 노랑
+    '금': '#9E9E9E', // 회색
+    '수': '#2196F3', // 파랑
+  };
+
+  // 일주에서 오행 아이콘 추출
+  const getIljuIcon = (dayStem) => {
+    const stem = dayStem[0];
+    const stemIndex = ['갑', '을', '병', '정', '무', '기', '경', '신', '임', '계'].indexOf(stem);
+    const wuxingIndex = stemIndex !== -1 ? [0, 0, 1, 1, 2, 2, 3, 3, 4, 4][stemIndex] : 0;
+    const wuxing = ['목', '화', '토', '금', '수'][wuxingIndex];
+    return wuxingEmoji[wuxing] || '🌳';
+  };
+
+  // 오행 세력에서 강한/부족한 오행 계산
+  const getWuxingTags = (wuxingPower) => {
+    if (!wuxingPower) return { strong: [], weak: [] };
+    
+    const wuxingArray = ['목', '화', '토', '금', '수'];
+    const powerArray = wuxingArray.map(wuxing => wuxingPower[wuxing] || 0);
+    
+    // 평균 계산
+    const total = powerArray.reduce((a, b) => a + b, 0);
+    const avg = total / powerArray.length;
+    
+    // 강한 오행 (평균보다 1.5배 이상)
+    const strong = [];
+    // 부족한 오행 (평균보다 0.5배 이하)
+    const weak = [];
+    
+    powerArray.forEach((power, idx) => {
+      if (power >= avg * 1.5 && power > 0) {
+        strong.push({
+          element: wuxingArray[idx],
+          power: power,
+        });
+      } else if (power <= avg * 0.5 && power > 0) {
+        weak.push({
+          element: wuxingArray[idx],
+          power: power,
+        });
+      }
+    });
+    
+    // 세력 순으로 정렬
+    strong.sort((a, b) => b.power - a.power);
+    weak.sort((a, b) => a.power - b.power);
+    
+    return { strong, weak };
+  };
+
+  // 캐치프레이즈 생성 (스토리텔링 방식, 쉬운 용어 사용)
+  const generateCatchphrase = (link) => {
+    const complementarity = link.complementarityScore;
+    const dayPillar = link.dayPillarScore;
+    const hasComplementarity = complementarity > 0;
+    const hasDayPillarMatch = dayPillar > 0;
+    const hasNegativeDayPillar = link.scoreDetails?.dayPillar?.details?.some(d => d.includes('-') || d.includes('충') || d.includes('원진'));
+    
+    // 에너지 보완이 매우 강하고 가치관도 잘 맞는 경우
+    if (complementarity >= 30 && hasDayPillarMatch && !hasNegativeDayPillar) {
+      return `${link.friend1Name}님과 ${link.friend2Name}님은\n서로에게 없는 에너지를 완벽하게 채워주는\n최고의 파트너예요!`;
+    }
+    
+    // 에너지 보완이 좋고 가치관도 잘 맞는 경우
+    if (complementarity >= 20 && dayPillar >= 10 && !hasNegativeDayPillar) {
+      return `${link.friend1Name}님과 ${link.friend2Name}님은\n에너지와 가치관이 모두 잘 맞는\n완벽한 조합이에요!`;
+    }
+    
+    // 에너지 보완은 좋지만 가치관에서 조율이 필요한 경우
+    if (complementarity >= 20 && dayPillar < 10) {
+      return `${link.friend1Name}님과 ${link.friend2Name}님은\n서로를 잘 채워주지만\n생각이 다를 수 있어서 이해하는 시간이 필요해요.`;
+    }
+    
+    // 가치관은 잘 맞지만 에너지 보완이 약한 경우
+    if (dayPillar >= 10 && complementarity < 20) {
+      return `${link.friend1Name}님과 ${link.friend2Name}님은\n가치관이 잘 맞지만\n서로를 채워주는 건 그냥 그래요.`;
+    }
+    
+    // 가치관에서 충돌이 있는 경우
+    if (hasNegativeDayPillar && complementarity < 20) {
+      return `${link.friend1Name}님과 ${link.friend2Name}님은\n서로 다른 성향이라 충돌할 수 있지만\n이해와 존중으로 극복할 수 있어요.`;
+    }
+    
+    // 에너지 보완만 있는 경우
+    if (hasComplementarity && !hasDayPillarMatch) {
+      return `${link.friend1Name}님과 ${link.friend2Name}님은\n서로를 잘 채워주지만\n생각이 다를 수 있어서 이해하는 시간이 필요해요.`;
+    }
+    
+    // 기본적인 관계
+    if (!hasComplementarity && !hasDayPillarMatch) {
+      return `${link.friend1Name}님과 ${link.friend2Name}님은\n서로 다른 특성을 가진 관계예요.\n소통과 이해를 통해 좋은 관계를 만들어가세요.`;
+    }
+    
+    // 일반적인 경우
+    if (complementarity >= 20 || dayPillar >= 10) {
+      return `${link.friend1Name}님과 ${link.friend2Name}님은\n서로의 부족함을 채워주는\n좋은 파트너예요!`;
+    } else if (complementarity > 0 || dayPillar > 0) {
+      return `${link.friend1Name}님과 ${link.friend2Name}님은\n균형잡힌 관계를 만들어갈 수 있어요.`;
+    } else {
+      return `${link.friend1Name}님과 ${link.friend2Name}님은\n이해와 소통을 통해\n좋은 관계를 만들어가세요.`;
+    }
+  };
+
+  // 해시태그 생성
+  const generateHashtags = (link) => {
+    const score = link.compatibilityScore;
+    const tags = [];
+    
+    if (score >= 80) {
+      tags.push('#천생연분', '#상호보완', '#정서적안정');
+    } else if (score >= 60) {
+      tags.push('#좋은팀워크', '#균형잡힌관계', '#상호보완');
+    } else if (score >= 40) {
+      tags.push('#보통관계', '#조율필요', '#이해필요');
+    } else if (score >= 20) {
+      tags.push('#주의필요', '#소통중요', '#조율필요');
+    } else {
+      tags.push('#주의필요', '#이해필요', '#시간필요');
+    }
+    
+    return tags;
+  };
+
+  // Q&A 분석 생성 (스토리텔링 방식, 점수 제거, 쉬운 용어 사용)
+  const generateAnalysis = (link) => {
+    const analysis = [];
+    const complementarity = link.complementarityScore;
+    const dayPillar = link.dayPillarScore;
+    const hasComplementarityDetails = link.scoreDetails?.complementarity?.details?.length > 0;
+    const hasDayPillarDetails = link.scoreDetails?.dayPillar?.details?.length > 0;
+    
+    // 첫 번째 질문: 케미 (긍정적인 부분만, 점수 제거, 쉬운 용어 사용)
+    let chemistryAnswer = '';
+    
+    if (hasComplementarityDetails) {
+      let detail = link.scoreDetails.complementarity.details[0];
+      // 이름 교체
+      detail = detail.replace(/상대가 내 결핍 오행/g, `${link.friend2Name}님이 ${link.friend1Name}님의 부족한 에너지`);
+      detail = detail.replace(/상대가 /g, `${link.friend2Name}님이 `);
+      detail = detail.replace(/내 /g, `${link.friend1Name}님의 `);
+      detail = detail.replace(/나의/g, `${link.friend1Name}님의`);
+      // 점수 표시 제거
+      detail = detail.replace(/[-+]?\d+점/g, '');
+      detail = detail.replace(/좋은 팀워크: /g, '');
+      detail = detail.replace(/최상의 시너지: /g, '');
+      detail = detail.replace(/ - /g, '. ');
+      // 전문 용어를 쉬운 말로 변경
+      detail = detail.replace(/오행\(([^)]+)\)/g, '$1 에너지');
+      detail = detail.replace(/오행/g, '에너지');
+      detail = detail.replace(/월지급 세력/g, '강한 힘');
+      detail = detail.replace(/적당한 세력/g, '적당한 힘');
+      detail = detail.replace(/\(([^)]+)\)/g, '');
+      
+      if (complementarity >= 30) {
+        chemistryAnswer = `${detail} ${link.friend1Name}님과 ${link.friend2Name}님은 서로에게 없는 것을 완벽하게 채워주는 최고의 파트너예요. 함께 있으면 편안하고 시너지가 생겨요.`;
+      } else if (complementarity >= 20) {
+        chemistryAnswer = `${detail} 서로를 잘 채워주는 좋은 관계예요. 함께 있으면 서로에게 도움이 되는 느낌이 들 거예요.`;
+      } else {
+        chemistryAnswer = `${detail} 서로를 보완하는 요소가 있어요. 함께 있으면 서로에게 도움이 될 수 있어요.`;
+      }
+    } else if (complementarity > 0) {
+      chemistryAnswer = `${link.friend1Name}님과 ${link.friend2Name}님은 서로를 잘 채워주는 관계예요. 함께 있으면 서로에게 도움이 되는 느낌이 들 거예요.`;
+    } else {
+      chemistryAnswer = `${link.friend1Name}님과 ${link.friend2Name}님은 함께 있으면 새로운 관점을 얻을 수 있는 관계예요. 서로 다른 강점을 가지고 있어 함께 일할 때 다양한 아이디어가 나올 수 있어요.`;
+    }
+    
+    // 일주 매칭 정보 추가 (긍정적인 부분만)
+    if (hasDayPillarDetails) {
+      const positiveDetails = link.scoreDetails.dayPillar.details.filter(d => d.includes('+') || d.includes('합') || d.includes('천간합'));
+      
+      if (positiveDetails.length > 0 && dayPillar >= 10) {
+        chemistryAnswer += ` 가치관도 잘 맞아서 함께 있으면 편안하고 서로의 생각을 잘 이해할 수 있어요.`;
+      } else if (positiveDetails.length > 0 && dayPillar < 10) {
+        chemistryAnswer += ` 가치관도 어느 정도 맞는 편이에요.`;
+      }
+    } else if (dayPillar > 0) {
+      chemistryAnswer += ` 가치관도 잘 맞는 편이라 함께 있으면 편안한 느낌이 들어요.`;
+    }
+    
+    analysis.push({
+      question: '두 사람의 케미는 어떤가요?',
+      answer: chemistryAnswer,
+    });
+    
+    // 두 번째 질문: 주의할 점 (쉬운 용어 사용)
+    let cautionAnswer = '';
+    
+    if (hasDayPillarDetails) {
+      const negativeDetails = link.scoreDetails.dayPillar.details.filter(d => d.includes('-') || d.includes('충') || d.includes('원진'));
+      
+      if (negativeDetails.length > 0) {
+        if (negativeDetails.some(d => d.includes('충'))) {
+          cautionAnswer = `${link.friend1Name}님과 ${link.friend2Name}님은 성격이나 생각이 다를 수 있어요. 의견이 다를 때가 있을 수 있지만, 서로의 입장을 이해하고 존중한다면 오히려 서로를 성장시키는 관계가 될 수 있어요.`;
+        } else if (negativeDetails.some(d => d.includes('원진'))) {
+          cautionAnswer = `${link.friend1Name}님과 ${link.friend2Name}님은 표현 방식이 달라서 작은 오해가 커질 수 있어요. 명확하게 소통하고 서로의 감정을 배려하는 것이 중요해요.`;
+        } else {
+          cautionAnswer = `${link.friend1Name}님과 ${link.friend2Name}님은 표현 방식이 달라서 오해가 생길 수 있어요. 서로의 예민한 부분을 건드리지 않도록 주의하고, 차이를 인정하는 것이 중요해요.`;
+        }
+      } else if (complementarity < 20) {
+        cautionAnswer = `${link.friend1Name}님과 ${link.friend2Name}님은 서로를 특별히 채워주는 관계는 아니에요. 너무 편한 사이가 되어 경계를 넘지 않도록 주의하세요.`;
+      } else {
+        cautionAnswer = `전반적으로 좋은 관계지만, 너무 편해져서 선을 넘을 수도 있어요. 서로의 경계를 존중하고 개인 공간을 인정하는 것이 중요해요.`;
+      }
+    } else if (complementarity < 20 && dayPillar < 10) {
+      cautionAnswer = `서로를 채워주거나 생각이 맞는 게 특별하지 않아서 초반에는 서로를 이해하는 데 시간이 걸릴 수 있어요. 하지만 서로의 입장을 들어보고 배려한다면 좋은 관계를 만들어갈 수 있어요.`;
+    } else {
+      cautionAnswer = `함께 일하거나 의논할 때 서로의 의견이 다를 수 있어요. 명확하게 소통하고 서로의 생각을 존중하는 자세가 중요해요.`;
+    }
+    
+    analysis.push({
+      question: '주의할 점이 있나요?',
+      answer: cautionAnswer,
+    });
+    
+    // 세 번째 질문: 추천 포인트 (긍정적인 경우에만, 쉬운 용어 사용)
+    if (link.compatibilityScore >= 60) {
+      let recommendation = '';
+      
+      if (complementarity >= 20 && dayPillar >= 10) {
+        recommendation = `${link.friend1Name}님과 ${link.friend2Name}님은 에너지와 가치관 모두 잘 맞는 최고의 조합이에요. 함께 일하거나 프로젝트를 진행할 때 시너지가 생길 거예요. 서로의 강점을 인정하고 보완해나가면 오랫동안 좋은 관계를 유지할 수 있어요.`;
+      } else if (complementarity >= 20) {
+        recommendation = `서로를 완벽하게 채워주는 관계예요. 함께 활동하거나 협업할 때 좋은 결과를 얻을 수 있을 거예요.`;
+      } else if (dayPillar >= 10) {
+        recommendation = `가치관이 잘 맞아서 함께 있으면 편안하고 서로의 의견을 잘 이해할 수 있어요. 함께 일하거나 의논할 때 좋은 시너지가 생길 거예요.`;
+      } else {
+        recommendation = `서로 다른 특성을 가진 관계지만, 그 차이가 오히려 균형을 만들어줘요. 서로의 강점을 인정하고 보완해나가면 좋은 관계가 될 거예요.`;
+      }
+      
+      analysis.push({
+        question: '이런 점이 좋아요',
+        answer: recommendation,
+      });
+    }
+    
+    return analysis;
+  };
+
+  // 친구 데이터에 일간 및 사주 8글자 추가
+  const friendsWithStem = friends.map(friend => {
+    const dayStem = friend.isLunar
+      ? calculateDayStemLunar(friend.year, friend.month, friend.day)
+      : calculateDayStem(friend.year, friend.month, friend.day);
+    
+    // 사주 8글자 계산 (시간은 기본값 0시 사용)
+    const fullSaju = calculateFullSaju(friend.year, friend.month, friend.day, 0, friend.isLunar);
+    
+    return {
+      ...friend,
+      dayStem,
+      fullSaju, // 사주 8글자 정보 추가
+    };
+  });
+
+  // 모든 관계 계산 (새로운 범용 인간관계 모델만 사용)
   const links = [];
   friendsWithStem.forEach((friend1, i) => {
     friendsWithStem.slice(i + 1).forEach((friend2) => {
-      const relationship = calculateRelationship(
-        friend1.dayStem, 
-        friend2.dayStem,
-        friend1.id,
-        friend2.id
+      // 새로운 점수 계산 (범용 인간관계 모델)
+      const compatibilityScore = calculateCompatibilityScore(
+        friend1.fullSaju,
+        friend2.fullSaju
       );
+      
+      // 점수 기반 라벨 및 스타일 생성
+      const label = getCompatibilityLabel(compatibilityScore.score);
+      const style = getCompatibilityStyle(compatibilityScore.score);
+      
       links.push({
-        from: relationship.source,
-        to: relationship.target,
-        ...relationship,
+        from: friend1.id,
+        to: friend2.id,
+        label,
+        color: style.color,
+        lineWidth: style.lineWidth,
+        lineStyle: style.lineStyle,
+        level: style.level,
+        bidirectional: true, // 모든 관계는 양방향
         friend1Name: friend1.name,
         friend2Name: friend2.name,
         friend1Stem: friend1.dayStem,
         friend2Stem: friend2.dayStem,
+        // 점수 정보
+        compatibilityScore: compatibilityScore.score,
+        baseScore: compatibilityScore.baseScore,
+        complementarityScore: compatibilityScore.complementarityScore,
+        dayPillarScore: compatibilityScore.dayPillarScore,
+        scoreDetails: compatibilityScore.details,
+        wuxingPower: compatibilityScore.wuxingPower,
+        // 설명 텍스트 (비즈니스 친화적)
+        description: `${friend1.name}과(와) ${friend2.name}의 파트너십 점수는 ${compatibilityScore.score}점입니다.`,
+        detailedDescription: `기본 점수 ${compatibilityScore.baseScore}점, 오행 상호보완 ${compatibilityScore.complementarityScore}점, 일주 매칭 ${compatibilityScore.dayPillarScore}점으로 구성됩니다.`,
       });
     });
   });
@@ -202,33 +479,54 @@ const CompatibilityGraph = ({ friends, onBack }) => {
   };
 
   // 이미지 저장 함수
-  const handleSaveImage = useCallback(async () => {
+  const handleSaveImage = useCallback(() => {
     if (!containerRef.current) return;
 
     try {
       const container = containerRef.current;
+      const svg = svgRef.current;
       
-      // html2canvas로 전체 컨테이너 캡처 (노드박스 포함)
-      const canvas = await html2canvas(container, {
-        backgroundColor: '#ffffff',
-        scale: 2, // 고해상도
-        logging: false,
-        useCORS: true,
-      });
-      
-      // JPG로 변환
-      canvas.toBlob((blob) => {
-        if (blob) {
-          const downloadUrl = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.download = `사주궁합분석_${new Date().getTime()}.jpg`;
-          link.href = downloadUrl;
-          link.click();
-          URL.revokeObjectURL(downloadUrl);
-        } else {
-          alert('이미지 저장에 실패했습니다.');
-        }
-      }, 'image/jpeg', 0.9);
+      if (!svg) {
+        alert('그래프를 불러오는 중입니다. 잠시 후 다시 시도해주세요.');
+        return;
+      }
+
+      // SVG를 문자열로 변환
+      const svgData = new XMLSerializer().serializeToString(svg);
+      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+
+      // Canvas로 변환
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = container.offsetWidth;
+        canvas.height = container.offsetHeight;
+        const ctx = canvas.getContext('2d');
+        
+        // 흰색 배경
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // SVG 이미지 그리기
+        ctx.drawImage(img, 0, 0);
+        
+        // JPG로 변환
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const downloadUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.download = `사주궁합분석_${new Date().getTime()}.jpg`;
+            link.href = downloadUrl;
+            link.click();
+            URL.revokeObjectURL(downloadUrl);
+            URL.revokeObjectURL(url);
+          } else {
+            alert('이미지 저장에 실패했습니다.');
+          }
+        }, 'image/jpeg', 0.9);
+      };
+      img.src = url;
     } catch (error) {
       console.error('이미지 저장 실패:', error);
       alert('이미지 저장 중 오류가 발생했습니다.');
@@ -282,9 +580,9 @@ const CompatibilityGraph = ({ friends, onBack }) => {
         <button onClick={onBack} className="back-button">
           뒤로
         </button>
-        <h2>궁합 분석 결과</h2>
+        <h2>파트너십 분석 결과</h2>
       </div>
-      {selectedNodeId && (
+          {selectedNodeId && (
         <div className="selected-node-info">
           <p>
             <strong>{friendsWithStem.find(f => f.id === selectedNodeId)?.name}</strong>님을 기준으로 한 관계도
@@ -325,7 +623,7 @@ const CompatibilityGraph = ({ friends, onBack }) => {
                   >
                     <line x1="0" y1="0" x2="6" y2="3" stroke={linkColor} strokeWidth="1.5" />
                     <line x1="0" y1="6" x2="6" y2="3" stroke={linkColor} strokeWidth="1.5" />
-                  </marker>
+              </marker>
                 );
               })}
             </defs>
@@ -430,7 +728,11 @@ const CompatibilityGraph = ({ friends, onBack }) => {
             const position = nodePositions.find(p => p.id === friend.id);
             if (!position) return null;
             
-            const wuxing = friend.dayStem.slice(1);
+            // dayStem 형식: '갑자' (천간+지지), 첫 글자(천간)에서 오행 추출
+            const stem = friend.dayStem[0];
+            const stemIndex = ['갑', '을', '병', '정', '무', '기', '경', '신', '임', '계'].indexOf(stem);
+            const wuxingIndex = stemIndex !== -1 ? [0, 0, 1, 1, 2, 2, 3, 3, 4, 4][stemIndex] : 0;
+            const wuxing = ['목', '화', '토', '금', '수'][wuxingIndex];
             const emoji = wuxingEmoji[wuxing] || '🌳';
             const isSelected = selectedNodeId === friend.id;
             
@@ -456,18 +758,18 @@ const CompatibilityGraph = ({ friends, onBack }) => {
       </div>
 
       <div className="instruction-text">
-        <p>↑ 이름을 눌러 궁합을 확인해 보세요</p>
+        <p>↑ 이름을 눌러 파트너십을 확인해 보세요</p>
       </div>
 
       <div className="bottom-action-buttons">
-        <button 
+        <button
           onClick={handleSaveImage} 
           className="save-image-button"
           title="이미지로 저장"
         >
           📷 이미지 저장
         </button>
-        <button 
+        <button
           onClick={handleSaveResultClick} 
           className="save-result-button"
           title="결과 저장"
@@ -476,35 +778,111 @@ const CompatibilityGraph = ({ friends, onBack }) => {
         </button>
       </div>
 
-      {selectedLink && (
+      {selectedLink && (() => {
+        // 오행 태그 계산
+        const user1Tags = selectedLink.wuxingPower ? getWuxingTags(selectedLink.wuxingPower.userA) : { strong: [], weak: [] };
+        const user2Tags = selectedLink.wuxingPower ? getWuxingTags(selectedLink.wuxingPower.userB) : { strong: [], weak: [] };
+        
+        // 캐치프레이즈 및 해시태그 생성
+        const catchphrase = generateCatchphrase(selectedLink);
+        const hashtags = generateHashtags(selectedLink);
+        const analysis = generateAnalysis(selectedLink);
+        
+        return (
         <div className="popup-overlay" onClick={() => setSelectedLink(null)}>
-          <div className="popup-content" onClick={(e) => e.stopPropagation()}>
+            <div className="popup-content-storytelling" onClick={(e) => e.stopPropagation()}>
             <button className="close-button" onClick={() => setSelectedLink(null)}>
               ×
             </button>
-            <h3>상세 궁합 정보</h3>
-            <div className="popup-info">
-              <div className="popup-pair">
-                <span className="friend-name">{selectedLink.friend1Name}</span>
-                <span className="stem-info">{selectedLink.friend1Stem}</span>
+              
+              {/* 통합 캐치프레이즈 및 점수 섹션 */}
+              <div className="popup-unified-section">
+                <div className="score-display">
+                  <span className="score-number">{selectedLink.compatibilityScore}</span>
+                  <span className="score-max">/ 100</span>
+                </div>
+                <p className="catchphrase-text">{catchphrase}</p>
+                <div className="hashtags">
+                  {hashtags.map((tag, idx) => (
+                    <span key={idx} className="hashtag">{tag}</span>
+                  ))}
+                </div>
               </div>
-              <div className="popup-relationship">
-                <span className={`relationship-badge level-${selectedLink.level}`}>
-                  {selectedLink.label}
+
+              {/* 프로필 섹션 */}
+              <div className="popup-profiles">
+                <div className="popup-profile-card">
+                  <div className="profile-header">
+                    <span className="profile-name">{selectedLink.friend1Name}</span>
+                    <span className="profile-ilju">
+                      {getIljuIcon(selectedLink.friend1Stem)} {selectedLink.friend1Stem}
+                    </span>
+                  </div>
+                  <div className="profile-tags">
+                    {user1Tags.strong.slice(0, 2).map((tag, idx) => (
+                      <span 
+                        key={`strong-${idx}`} 
+                        className="wuxing-badge strong"
+                        style={{ backgroundColor: wuxingColors[tag.element] + '20', color: wuxingColors[tag.element], borderColor: wuxingColors[tag.element] }}
+                      >
+                        {wuxingEmoji[tag.element]} {wuxingNames[tag.element]} 기운 강함
+                      </span>
+                    ))}
+                    {user1Tags.weak.slice(0, 1).map((tag, idx) => (
+                      <span 
+                        key={`weak-${idx}`} 
+                        className="wuxing-badge weak"
+                        style={{ backgroundColor: wuxingColors[tag.element] + '15', color: wuxingColors[tag.element], borderColor: wuxingColors[tag.element] }}
+                      >
+                        {wuxingEmoji[tag.element]} {wuxingNames[tag.element]} 기운 부족
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                
+                <div className="popup-profile-card">
+                  <div className="profile-header">
+                    <span className="profile-name">{selectedLink.friend2Name}</span>
+                    <span className="profile-ilju">
+                      {getIljuIcon(selectedLink.friend2Stem)} {selectedLink.friend2Stem}
+                    </span>
+                  </div>
+                  <div className="profile-tags">
+                    {user2Tags.strong.slice(0, 2).map((tag, idx) => (
+                      <span 
+                        key={`strong-${idx}`} 
+                        className="wuxing-badge strong"
+                        style={{ backgroundColor: wuxingColors[tag.element] + '20', color: wuxingColors[tag.element], borderColor: wuxingColors[tag.element] }}
+                      >
+                        {wuxingEmoji[tag.element]} {wuxingNames[tag.element]} 기운 강함
+                      </span>
+                    ))}
+                    {user2Tags.weak.slice(0, 1).map((tag, idx) => (
+                      <span 
+                        key={`weak-${idx}`} 
+                        className="wuxing-badge weak"
+                        style={{ backgroundColor: wuxingColors[tag.element] + '15', color: wuxingColors[tag.element], borderColor: wuxingColors[tag.element] }}
+                      >
+                        {wuxingEmoji[tag.element]} {wuxingNames[tag.element]} 기운 부족
                 </span>
+                    ))}
+                  </div>
+                </div>
               </div>
-              <div className="popup-pair">
-                <span className="friend-name">{selectedLink.friend2Name}</span>
-                <span className="stem-info">{selectedLink.friend2Stem}</span>
+              
+              {/* Q&A 분석 섹션 */}
+              <div className="popup-analysis">
+                {analysis.map((item, idx) => (
+                  <div key={idx} className="analysis-card">
+                    <div className="analysis-question">Q: {item.question}</div>
+                    <div className="analysis-answer">A: {item.answer}</div>
+                  </div>
+                ))}
               </div>
             </div>
-            <p className="popup-description">{selectedLink.description}</p>
-            {selectedLink.detailedDescription && (
-              <p className="popup-detailed-description">{selectedLink.detailedDescription}</p>
-            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {showTitleModal && (
         <div className="popup-overlay" onClick={() => setShowTitleModal(false)}>

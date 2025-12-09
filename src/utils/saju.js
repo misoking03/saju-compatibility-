@@ -9,6 +9,21 @@ const TIANGAN_WUXING = [0, 0, 1, 1, 2, 2, 3, 3, 4, 4];
 // 음: 을(1), 정(3), 기(5), 신(7), 계(9)
 const TIANGAN_YINYANG = [true, false, true, false, true, false, true, false, true, false];
 
+// 지지 배열 (12개)
+const JIJI = ['자', '축', '인', '묘', '진', '사', '오', '미', '신', '유', '술', '해'];
+// 지지 오행 (0: 목, 1: 화, 2: 토, 3: 금, 4: 수)
+// 자수, 축토, 인목, 묘목, 진토, 사화, 오화, 미토, 신금, 유금, 술토, 해수
+const JIJI_WUXING = [4, 2, 0, 0, 2, 1, 1, 2, 3, 3, 2, 4];
+
+// 가중치 상수 (범용 인간관계 모델)
+const WEIGHTS = {
+  month_branch: 4.0,  // 월지 (계절/환경으로 가장 중요)
+  day_branch: 2.0,    // 일지 (배우자궁)
+  hour_branch: 1.5,   // 시지
+  year_branch: 1.0,   // 년지
+  stem: 1.0,          // 모든 천간 (일간 포함)
+};
+
 // 오행 상생 관계 (생성하는 쪽)
 const WUXING_SHENG = {
   0: 1, // 목생화
@@ -32,14 +47,16 @@ const WUXING_KE = {
  * @param {number} year - 연도
  * @param {number} month - 월 (1-12)
  * @param {number} day - 일
- * @returns {string} 일간 (예: '갑목')
+ * @returns {string} 일간 (예: '갑자' - 천간+지지)
  */
 export function calculateDayStem(year, month, day) {
-  // 기준일: 1900년 1월 1일 = 갑술(甲戌), 천간 인덱스 0 (갑)
+  // 기준일: 1900년 1월 1일 = 갑술(甲戌)
+  // 천간 인덱스 0 (갑), 지지 인덱스 11 (술)
   const BASE_YEAR = 1900;
   const BASE_MONTH = 1;
   const BASE_DAY = 1;
   const BASE_STEM_INDEX = 0; // 갑
+  const BASE_JIJI_INDEX = 11; // 술
   
   // 기준일과 목표일을 생성하고 시간을 00:00:00으로 초기화 (시차 보정)
   const baseDate = new Date(BASE_YEAR, BASE_MONTH - 1, BASE_DAY);
@@ -52,16 +69,20 @@ export function calculateDayStem(year, month, day) {
   const diffTime = targetDate - baseDate;
   const totalDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1; // 하루 밀림 보정
   
-  // 일간 인덱스 계산: (총 일수 + 기준일 천간 인덱스) % 10
+  // 천간 인덱스 계산: (총 일수 + 기준일 천간 인덱스) % 10
   const stemIndex = (totalDays + BASE_STEM_INDEX) % 10;
+  const finalStemIndex = stemIndex >= 0 ? stemIndex : (stemIndex + 10) % 10;
   
-  // 음수 처리 (과거 날짜의 경우)
-  const finalStemIndex = stemIndex >= 0 ? stemIndex : stemIndex + 10;
+  // 지지 인덱스 계산: (총 일수 + 기준일 지지 인덱스 - 1) % 12
+  // -1을 하여 지지 인덱스가 +1씩 밀리는 버그 수정
+  const jijiIndex = (totalDays + BASE_JIJI_INDEX - 1) % 12;
+  const finalJijiIndex = jijiIndex >= 0 ? jijiIndex : (jijiIndex + 12) % 12;
   
   const stem = TIANGAN[finalStemIndex];
-  const wuxing = ['목', '화', '토', '금', '수'][TIANGAN_WUXING[finalStemIndex]];
+  const jiji = JIJI[finalJijiIndex];
   
-  return stem + wuxing;
+  // 천간+지지 형식으로 반환 (예: '갑자', '임신', '정해')
+  return stem + jiji;
 }
 
 /**
@@ -77,447 +98,530 @@ export function calculateDayStemLunar(year, month, day) {
   return calculateDayStem(year, month, day);
 }
 
+
+
+// ============================================
+// 새로운 범용 인간관계 모델 점수 계산 함수들
+// ============================================
+
 /**
- * 일간에서 오행 추출
- * @param {string} dayStem - 일간 (예: '갑목')
- * @returns {number} 오행 인덱스 (0: 목, 1: 화, 2: 토, 3: 금, 4: 수)
+ * 연도의 천간지지 계산 (년주)
+ * @param {number} year - 연도
+ * @returns {object} { stem, branch }
  */
-function getWuxingFromStem(dayStem) {
-  const stem = dayStem[0];
-  const index = TIANGAN.indexOf(stem);
-  if (index === -1) return 0;
-  return TIANGAN_WUXING[index];
+function calculateYearPillar(year) {
+  const BASE_YEAR = 1900;
+  const BASE_STEM_INDEX = 6; // 경
+  const BASE_JIJI_INDEX = 0; // 자
+  
+  const yearDiff = year - BASE_YEAR;
+  const stemIndex = (yearDiff + BASE_STEM_INDEX) % 10;
+  const jijiIndex = (yearDiff + BASE_JIJI_INDEX) % 12;
+  
+  return {
+    stem: TIANGAN[stemIndex >= 0 ? stemIndex : (stemIndex + 10) % 10],
+    branch: JIJI[jijiIndex >= 0 ? jijiIndex : (jijiIndex + 12) % 12]
+  };
 }
 
 /**
- * 두 사람의 궁합 점수 계산
- * 파라미터 순서와 무관하게 절대적 오행 관계를 판단
- * @param {string} stem1 - 첫 번째 사람의 일간
- * @param {string} stem2 - 두 번째 사람의 일간
- * @returns {object} 궁합 정보
+ * 월의 천간지지 계산 (월주)
+ * @param {number} year - 연도
+ * @param {number} month - 월 (1-12)
+ * @returns {object} { stem, branch }
  */
-export function calculateCompatibility(stem1, stem2) {
-  const wuxing1 = getWuxingFromStem(stem1);
-  const wuxing2 = getWuxingFromStem(stem2);
+function calculateMonthPillar(year, month) {
+  const BASE_YEAR = 1900;
+  const BASE_MONTH = 1;
+  const BASE_STEM_INDEX = 3; // 정
+  const BASE_JIJI_INDEX = 1; // 축
   
-  // 같은 오행 (비화)
-  if (wuxing1 === wuxing2) {
-    return {
-      level: 3, // 보통
-      label: '보통',
-      description: '같은 오행으로 서로 비슷한 성향을 가지고 있습니다.',
-      color: '#FFA500',
-    };
+  const yearDiff = year - BASE_YEAR;
+  const monthDiff = month - BASE_MONTH;
+  const totalMonths = yearDiff * 12 + monthDiff;
+  
+  const stemIndex = (totalMonths + BASE_STEM_INDEX) % 10;
+  const jijiIndex = (totalMonths + BASE_JIJI_INDEX) % 12;
+  
+  return {
+    stem: TIANGAN[stemIndex >= 0 ? stemIndex : (stemIndex + 10) % 10],
+    branch: JIJI[jijiIndex >= 0 ? jijiIndex : (jijiIndex + 12) % 12]
+  };
+}
+
+/**
+ * 일의 천간지지 계산 (일주)
+ * @param {number} year - 연도
+ * @param {number} month - 월 (1-12)
+ * @param {number} day - 일
+ * @returns {object} { stem, branch }
+ */
+function calculateDayPillar(year, month, day) {
+  const BASE_YEAR = 1900;
+  const BASE_MONTH = 1;
+  const BASE_DAY = 1;
+  const BASE_STEM_INDEX = 0; // 갑
+  const BASE_JIJI_INDEX = 11; // 술
+  
+  const baseDate = new Date(BASE_YEAR, BASE_MONTH - 1, BASE_DAY);
+  baseDate.setHours(0, 0, 0, 0);
+  
+  const targetDate = new Date(year, month - 1, day);
+  targetDate.setHours(0, 0, 0, 0);
+  
+  const diffTime = targetDate - baseDate;
+  const totalDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
+  
+  const stemIndex = (totalDays + BASE_STEM_INDEX) % 10;
+  const jijiIndex = (totalDays + BASE_JIJI_INDEX - 1) % 12; // -1 버그 수정 반영
+  
+  return {
+    stem: TIANGAN[stemIndex >= 0 ? stemIndex : (stemIndex + 10) % 10],
+    branch: JIJI[jijiIndex >= 0 ? jijiIndex : (jijiIndex + 12) % 12]
+  };
+}
+
+/**
+ * 시의 천간지지 계산 (시주) - 간단한 방법
+ * @param {string} dayStem - 일간 (예: '갑목')
+ * @param {number} hour - 시 (0-23)
+ * @returns {object} { stem, branch }
+ */
+function calculateHourPillar(dayStem, hour) {
+  // 시지 계산
+  const hourToJiji = {
+    23: 0, 0: 0, 1: 1, 2: 1, 3: 2, 4: 2, 5: 3, 6: 3, 7: 4, 8: 4, 9: 5, 10: 5,
+    11: 6, 12: 6, 13: 7, 14: 7, 15: 8, 16: 8, 17: 9, 18: 9, 19: 10, 20: 10, 21: 11, 22: 11
+  };
+  
+  const jijiIndex = hourToJiji[hour] || 0;
+  const branch = JIJI[jijiIndex];
+  
+  // 시간 계산 (일간을 기반으로)
+  const dayStemChar = dayStem[0];
+  const dayStemIndex = TIANGAN.indexOf(dayStemChar);
+  
+  // 일간의 천간 인덱스를 기반으로 시간 계산
+  const hourStemIndex = (dayStemIndex * 2 + Math.floor(hour / 2)) % 10;
+  const stem = TIANGAN[hourStemIndex >= 0 ? hourStemIndex : (hourStemIndex + 10) % 10];
+  
+  return { stem, branch };
+}
+
+/**
+ * 사주 8글자 계산
+ * @param {number} year - 연도
+ * @param {number} month - 월 (1-12)
+ * @param {number} day - 일
+ * @param {number} hour - 시 (0-23, 기본값 0)
+ * @param {boolean} isLunar - 음력 여부
+ * @returns {object} 사주 8글자 정보
+ */
+export function calculateFullSaju(year, month, day, hour = 0, isLunar = false) {
+  const yearPillar = calculateYearPillar(year);
+  const monthPillar = calculateMonthPillar(year, month);
+  const dayPillar = calculateDayPillar(year, month, day);
+  const dayStemWithWuxing = dayPillar.stem + ['목', '화', '토', '금', '수'][TIANGAN_WUXING[TIANGAN.indexOf(dayPillar.stem)]];
+  const hourPillar = calculateHourPillar(dayStemWithWuxing, hour);
+  
+  return {
+    year_stem: yearPillar.stem,
+    year_branch: yearPillar.branch,
+    month_stem: monthPillar.stem,
+    month_branch: monthPillar.branch,
+    day_stem: dayPillar.stem,
+    day_branch: dayPillar.branch,
+    hour_stem: hourPillar.stem,
+    hour_branch: hourPillar.branch,
+  };
+}
+
+/**
+ * 가중치 기반 오행 세력 계산
+ * @param {object} sajuData - 사주 8글자 데이터
+ * @returns {object} 오행별 총점 {'목': 2.0, '화': 6.5, ...}
+ */
+function calculateWuxingPower(sajuData) {
+  const wuxingPower = { '목': 0.0, '화': 0.0, '토': 0.0, '금': 0.0, '수': 0.0 };
+  const wuxingNames = ['목', '화', '토', '금', '수'];
+  
+  // 년간 (천간)
+  const yearStemIndex = TIANGAN.indexOf(sajuData.year_stem);
+  if (yearStemIndex !== -1) {
+    const wuxing = wuxingNames[TIANGAN_WUXING[yearStemIndex]];
+    wuxingPower[wuxing] += WEIGHTS.stem;
   }
   
-  // 절대적 오행 관계 판단 (파라미터 순서와 무관)
-  const wuxingRel = getAbsoluteWuxingRelationship(wuxing1, wuxing2);
-  
-  // 상생 관계
-  if (wuxingRel && wuxingRel.type === 'sheng') {
-    const sourceStem = (wuxingRel.source === wuxing1) ? stem1 : stem2;
-    const targetStem = (wuxingRel.target === wuxing1) ? stem1 : stem2;
-    return {
-      level: 1, // 천생연분
-      label: '천생연분',
-      description: `${sourceStem}이(가) ${targetStem}을(를) 생하는 상생 관계입니다. 서로를 도와주는 완벽한 궁합입니다!`,
-      color: '#4CAF50',
-    };
+  // 년지
+  const yearBranchIndex = JIJI.indexOf(sajuData.year_branch);
+  if (yearBranchIndex !== -1) {
+    const wuxing = wuxingNames[JIJI_WUXING[yearBranchIndex]];
+    wuxingPower[wuxing] += WEIGHTS.year_branch;
   }
   
-  // 상극 관계
-  if (wuxingRel && wuxingRel.type === 'ke') {
-    const sourceStem = (wuxingRel.source === wuxing1) ? stem1 : stem2;
-    const targetStem = (wuxingRel.target === wuxing1) ? stem1 : stem2;
-    return {
-      level: 5, // 파국
-      label: '파국',
-      description: `${sourceStem}이(가) ${targetStem}을(를) 극하는 상극 관계입니다. 충돌이 있을 수 있습니다.`,
-      color: '#F44336',
-    };
+  // 월간 (천간)
+  const monthStemIndex = TIANGAN.indexOf(sajuData.month_stem);
+  if (monthStemIndex !== -1) {
+    const wuxing = wuxingNames[TIANGAN_WUXING[monthStemIndex]];
+    wuxingPower[wuxing] += WEIGHTS.stem;
   }
   
-  // 그 외의 경우 (비상생비상극)
-  // 오행 간의 거리에 따라 점수 부여
-  const diff = Math.abs(wuxing1 - wuxing2);
-  if (diff === 1 || diff === 4) {
+  // 월지 (가장 높은 가중치)
+  const monthBranchIndex = JIJI.indexOf(sajuData.month_branch);
+  if (monthBranchIndex !== -1) {
+    const wuxing = wuxingNames[JIJI_WUXING[monthBranchIndex]];
+    wuxingPower[wuxing] += WEIGHTS.month_branch;
+  }
+  
+  // 일간 (천간)
+  const dayStemIndex = TIANGAN.indexOf(sajuData.day_stem);
+  if (dayStemIndex !== -1) {
+    const wuxing = wuxingNames[TIANGAN_WUXING[dayStemIndex]];
+    wuxingPower[wuxing] += WEIGHTS.stem;
+  }
+  
+  // 일지
+  const dayBranchIndex = JIJI.indexOf(sajuData.day_branch);
+  if (dayBranchIndex !== -1) {
+    const wuxing = wuxingNames[JIJI_WUXING[dayBranchIndex]];
+    wuxingPower[wuxing] += WEIGHTS.day_branch;
+  }
+  
+  // 시간 (천간)
+  const hourStemIndex = TIANGAN.indexOf(sajuData.hour_stem);
+  if (hourStemIndex !== -1) {
+    const wuxing = wuxingNames[TIANGAN_WUXING[hourStemIndex]];
+    wuxingPower[wuxing] += WEIGHTS.stem;
+  }
+  
+  // 시지
+  const hourBranchIndex = JIJI.indexOf(sajuData.hour_branch);
+  if (hourBranchIndex !== -1) {
+    const wuxing = wuxingNames[JIJI_WUXING[hourBranchIndex]];
+    wuxingPower[wuxing] += WEIGHTS.hour_branch;
+  }
+  
+  return wuxingPower;
+}
+
+/**
+ * 오행 상호보완 점수 계산 (Max 40점)
+ * @param {object} userAPower - User A의 오행 세력
+ * @param {object} userBPower - User B의 오행 세력
+ * @returns {object} { score, details }
+ */
+function calculateComplementarityScore(userAPower, userBPower) {
+  let score = 0;
+  const details = [];
+  
+  // User A의 가장 약한 오행(결핍) 찾기
+  const aMinWuxing = Object.entries(userAPower).reduce((min, [wuxing, power]) => 
+    power < min[1] ? [wuxing, power] : min, 
+    ['목', Infinity]
+  );
+  
+  const [minWuxingName, minWuxingValue] = aMinWuxing;
+  
+  // User B가 A의 결핍 오행을 보완하는지 확인
+  const bMinWuxingPower = userBPower[minWuxingName] || 0.0;
+  
+  if (bMinWuxingPower >= 4.0) {  // 월지급 세력
+    score += 40;
+    details.push(`상대가 내 결핍 오행(${minWuxingName})을 월지급 세력(${bMinWuxingPower.toFixed(1)}점)으로 보완 - 최상의 시너지: +40점`);
+  } else if (bMinWuxingPower >= 2.0) {  // 적당한 세력
+    score += 20;
+    details.push(`상대가 내 결핍 오행(${minWuxingName})을 적당한 세력(${bMinWuxingPower.toFixed(1)}점)으로 보완 - 좋은 팀워크: +20점`);
+  }
+  
+  return { score, details };
+}
+
+/**
+ * 천간합 확인
+ * @param {string} stemA - 천간 A
+ * @param {string} stemB - 천간 B
+ * @returns {boolean}
+ */
+function checkTianganHe(stemA, stemB) {
+  const hePairs = [
+    ['갑', '기'], ['기', '갑'],
+    ['을', '경'], ['경', '을'],
+    ['병', '신'], ['신', '병'],
+    ['정', '임'], ['임', '정'],
+    ['무', '계'], ['계', '무'],
+  ];
+  return hePairs.some(([a, b]) => a === stemA && b === stemB);
+}
+
+/**
+ * 천간충 확인
+ * @param {string} stemA - 천간 A
+ * @param {string} stemB - 천간 B
+ * @returns {boolean}
+ */
+function checkTianganChong(stemA, stemB) {
+  const chongPairs = [
+    ['갑', '경'], ['경', '갑'],
+    ['을', '신'], ['신', '을'],
+    ['병', '임'], ['임', '병'],
+    ['정', '계'], ['계', '정'],
+  ];
+  return chongPairs.some(([a, b]) => a === stemA && b === stemB);
+}
+
+/**
+ * 육합 확인
+ * @param {string} branchA - 지지 A
+ * @param {string} branchB - 지지 B
+ * @returns {boolean}
+ */
+function checkJijiLiuhe(branchA, branchB) {
+  const liuhePairs = [
+    ['자', '축'], ['축', '자'],
+    ['인', '해'], ['해', '인'],
+    ['묘', '술'], ['술', '묘'],
+    ['진', '유'], ['유', '진'],
+    ['사', '신'], ['신', '사'],
+    ['오', '미'], ['미', '오'],
+  ];
+  return liuhePairs.some(([a, b]) => a === branchA && b === branchB);
+}
+
+/**
+ * 삼합 확인
+ * @param {string} branchA - 지지 A
+ * @param {string} branchB - 지지 B
+ * @returns {boolean}
+ */
+function checkJijiSanhe(branchA, branchB) {
+  const sanheGroups = [
+    ['인', '오', '술'],
+    ['사', '유', '축'],
+    ['해', '묘', '미'],
+    ['자', '진', '신'],
+  ];
+  return sanheGroups.some(group => group.includes(branchA) && group.includes(branchB));
+}
+
+/**
+ * 지지충 확인
+ * @param {string} branchA - 지지 A
+ * @param {string} branchB - 지지 B
+ * @returns {boolean}
+ */
+function checkJijiChong(branchA, branchB) {
+  const chongPairs = [
+    ['자', '오'], ['오', '자'],
+    ['축', '미'], ['미', '축'],
+    ['인', '신'], ['신', '인'],
+    ['묘', '유'], ['유', '묘'],
+    ['진', '술'], ['술', '진'],
+    ['사', '해'], ['해', '사'],
+  ];
+  return chongPairs.some(([a, b]) => a === branchA && b === branchB);
+}
+
+/**
+ * 원진살 확인
+ * @param {string} branchA - 지지 A
+ * @param {string} branchB - 지지 B
+ * @returns {boolean}
+ */
+function checkJijiYuanjin(branchA, branchB) {
+  const yuanjinPairs = [
+    ['자', '묘'], ['묘', '자'],
+    ['축', '진'], ['진', '축'],
+    ['인', '사'], ['사', '인'],
+    ['오', '유'], ['유', '오'],
+    ['신', '해'], ['해', '신'],
+    ['미', '술'], ['술', '미'],
+  ];
+  return yuanjinPairs.some(([a, b]) => a === branchA && b === branchB);
+}
+
+/**
+ * 귀문관살 확인
+ * @param {string} branchA - 지지 A
+ * @param {string} branchB - 지지 B
+ * @returns {boolean}
+ */
+function checkJijiGuimun(branchA, branchB) {
+  const guimunPairs = [
+    ['자', '해'], ['해', '자'],
+    ['축', '미'], ['미', '축'],
+    ['인', '신'], ['신', '인'],
+    ['묘', '유'], ['유', '묘'],
+    ['진', '술'], ['술', '진'],
+    ['사', '오'], ['오', '사'],
+  ];
+  return guimunPairs.some(([a, b]) => a === branchA && b === branchB);
+}
+
+/**
+ * 일주 매칭 점수 계산 (Max 20점: 천간 10점 + 지지 10점)
+ * @param {object} userASaju - User A의 사주 데이터
+ * @param {object} userBSaju - User B의 사주 데이터
+ * @returns {object} { score, details }
+ */
+function calculateDayPillarMatching(userASaju, userBSaju) {
+  let score = 0;
+  const details = [];
+  
+  const aDayStem = userASaju.day_stem;
+  const aDayBranch = userASaju.day_branch;
+  const bDayStem = userBSaju.day_stem;
+  const bDayBranch = userBSaju.day_branch;
+  
+  // 천간 분석 - 가치관/소통 (Max 10점)
+  if (checkTianganHe(aDayStem, bDayStem)) {
+    score += 10;
+    details.push(`천간합 (${aDayStem}-${bDayStem}) - 업무 합이 잘 맞음: +10점`);
+  }
+  
+  if (checkTianganChong(aDayStem, bDayStem)) {
+    score -= 5;
+    details.push(`천간충 (${aDayStem}-${bDayStem}) - 의견 조율이 필요함: -5점`);
+  }
+  
+  // 지지 분석 - 성격/스타일 (Max 10점)
+  if (checkJijiLiuhe(aDayBranch, bDayBranch)) {
+    score += 10;
+    details.push(`육합 (${aDayBranch}-${bDayBranch}) - 팀워크가 좋음: +10점`);
+  }
+  
+  if (checkJijiSanhe(aDayBranch, bDayBranch)) {
+    score += 10;
+    details.push(`삼합 (${aDayBranch}-${bDayBranch}) - 팀워크가 좋음: +10점`);
+  }
+  
+  if (checkJijiChong(aDayBranch, bDayBranch)) {
+    score -= 5;
+    details.push(`지지충 (${aDayBranch}-${bDayBranch}) - 성격 차이, 적당한 거리 유지 필요: -5점`);
+  }
+  
+  if (checkJijiYuanjin(aDayBranch, bDayBranch)) {
+    score -= 5;
+    details.push(`원진살 (${aDayBranch}-${bDayBranch}) - 소통 시 주의 필요: -5점`);
+  }
+  
+  if (checkJijiGuimun(aDayBranch, bDayBranch)) {
+    score -= 5;
+    details.push(`귀문관살 (${aDayBranch}-${bDayBranch}) - 소통 시 주의 필요: -5점`);
+  }
+  
+  return { score, details };
+}
+
+/**
+ * 점수에 따른 파트너십 라벨 생성 (심플한 버전)
+ * @param {number} score - 종합 점수 (0-100)
+ * @returns {string} 라벨 텍스트
+ */
+export function getCompatibilityLabel(score) {
+  if (score >= 80) {
+    return '최상';
+  } else if (score >= 60) {
+    return '좋음';
+  } else if (score >= 40) {
+    return '보통';
+  } else if (score >= 20) {
+    return '주의';
+  } else {
+    return '조율';
+  }
+}
+
+/**
+ * 점수에 따른 스타일 정보 생성
+ * @param {number} score - 종합 점수 (0-100)
+ * @returns {object} 스타일 정보 { color, lineWidth, lineStyle, level }
+ */
+export function getCompatibilityStyle(score) {
+  if (score >= 80) {
     return {
-      level: 2, // 좋음
-      label: '좋음',
-      description: '서로 잘 어울리는 관계입니다.',
-      color: '#8BC34A',
+      color: '#4CAF50', // 초록색
+      lineWidth: 4,
+      lineStyle: 'solid',
+      level: 1,
+    };
+  } else if (score >= 60) {
+    return {
+      color: '#8BC34A', // 연한 초록색
+      lineWidth: 3,
+      lineStyle: 'solid',
+      level: 2,
+    };
+  } else if (score >= 40) {
+    return {
+      color: '#FFA500', // 주황색
+      lineWidth: 2,
+      lineStyle: 'solid',
+      level: 3,
+    };
+  } else if (score >= 20) {
+    return {
+      color: '#FF9800', // 진한 주황색
+      lineWidth: 2,
+      lineStyle: 'dashed',
+      level: 4,
     };
   } else {
     return {
-      level: 4, // 그닥
-      label: '그닥',
-      description: '특별한 상성은 없지만 무난한 관계입니다.',
-      color: '#FF9800',
-    };
-  }
-}
-
-/**
- * 궁합 레벨에 따른 한글 라벨
- */
-export const COMPATIBILITY_LABELS = {
-  1: '천생연분',
-  2: '좋음',
-  3: '보통',
-  4: '그닥',
-  5: '파국',
-};
-
-/**
- * 일간에서 천간 인덱스 추출
- * @param {string} dayStem - 일간 (예: '갑목')
- * @returns {number} 천간 인덱스 (0-9)
- */
-function getStemIndex(dayStem) {
-  const stem = dayStem[0];
-  return TIANGAN.indexOf(stem);
-}
-
-/**
- * 일간에서 음양 추출
- * @param {string} dayStem - 일간 (예: '갑목')
- * @returns {boolean} true면 양, false면 음
- */
-function getYinYang(dayStem) {
-  const index = getStemIndex(dayStem);
-  return TIANGAN_YINYANG[index];
-}
-
-/**
- * 오행 간의 절대적 관계 판단 (파라미터 순서와 무관)
- * @param {number} wuxing1 - 첫 번째 오행 (0: 목, 1: 화, 2: 토, 3: 금, 4: 수)
- * @param {number} wuxing2 - 두 번째 오행
- * @returns {object|null} 관계 정보 { type: 'sheng'|'ke'|null, source: wuxing, target: wuxing }
- *   - type: 'sheng' (상생), 'ke' (상극), null (관계 없음)
- *   - source: 관계의 주체 (생하거나 극하는 쪽)
- *   - target: 관계의 객체 (생받거나 극당하는 쪽)
- */
-function getAbsoluteWuxingRelationship(wuxing1, wuxing2) {
-  // 같은 오행인 경우 관계 없음
-  if (wuxing1 === wuxing2) {
-    return null;
-  }
-
-  // 상생/상극을 절대 규칙 테이블로만 판단해 파라미터 순서에 영향받지 않도록 정규화
-  const SHENG_RULES = [
-    [0, 1], // 목 -> 화
-    [1, 2], // 화 -> 토
-    [2, 3], // 토 -> 금
-    [3, 4], // 금 -> 수
-    [4, 0], // 수 -> 목
-  ];
-  const KE_RULES = [
-    [0, 2], // 목 -> 토
-    [2, 4], // 토 -> 수
-    [4, 1], // 수 -> 화
-    [1, 3], // 화 -> 금
-    [3, 0], // 금 -> 목
-  ];
-
-  // 상생 확인
-  for (const [source, target] of SHENG_RULES) {
-    if (wuxing1 === source && wuxing2 === target) {
-      return { type: 'sheng', source, target };
-    }
-    if (wuxing2 === source && wuxing1 === target) {
-      return { type: 'sheng', source, target };
-    }
-  }
-
-  // 상극 확인
-  for (const [source, target] of KE_RULES) {
-    if (wuxing1 === source && wuxing2 === target) {
-      return { type: 'ke', source, target };
-    }
-    if (wuxing2 === source && wuxing1 === target) {
-      return { type: 'ke', source, target };
-    }
-  }
-
-  // 관계 없음
-  return null;
-}
-
-/**
- * 십성과 합충 개념을 적용한 관계 계산
- * 절대 우선순위에 따라 if-else if 구조로 작성
- * @param {string} me - 내 일간 (예: '갑목')
- * @param {string} you - 상대방 일간 (예: '을목')
- * @param {number} meId - 내 ID
- * @param {number} youId - 상대방 ID
- * @returns {object} 관계 정보 (source, target 포함)
- */
-export function calculateRelationship(me, you, meId, youId) {
-  const meIndex = getStemIndex(me);
-  const youIndex = getStemIndex(you);
-  const meWuxing = getWuxingFromStem(me);
-  const youWuxing = getWuxingFromStem(you);
-
-  // ============================================
-  // 1순위: 특수 관계 (합 & 충) - 최우선
-  // ============================================
-  
-  // 천간합 (LOVE) - 갑-기(0-5), 을-경(1-6), 병-신(2-7), 정-임(3-8), 무-계(4-9)
-  // 양방향 관계
-  if ((meIndex === 0 && youIndex === 5) || (meIndex === 5 && youIndex === 0) || // 갑-기
-      (meIndex === 1 && youIndex === 6) || (meIndex === 6 && youIndex === 1) || // 을-경
-      (meIndex === 2 && youIndex === 7) || (meIndex === 7 && youIndex === 2) || // 병-신
-      (meIndex === 3 && youIndex === 8) || (meIndex === 8 && youIndex === 3) || // 정-임
-      (meIndex === 4 && youIndex === 9) || (meIndex === 9 && youIndex === 4)) { // 무-계
-    return {
-      level: 1,
-      label: '❤️운명의 짝꿍',
-      description: `${me}과(와) ${you}의 천간합 관계입니다. 운명적으로 끌리는 특별한 인연입니다!`,
-      detailedDescription: '운명적으로 끌리는 특별한 인연입니다. 서로를 보완하고 조화를 이루는 완벽한 궁합입니다.',
-      color: '#FF69B4',
-      lineWidth: 6,
-      lineStyle: 'solid',
-      source: meId,
-      target: youId,
-      bidirectional: true, // 양방향
-    };
-  }
-  
-  // 천간충 (CRASH) - 갑-경(0-6), 을-신(1-7), 병-임(2-8), 정-계(3-9)
-  // 양방향 관계
-  else if ((meIndex === 0 && youIndex === 6) || (meIndex === 6 && youIndex === 0) || // 갑-경
-           (meIndex === 1 && youIndex === 7) || (meIndex === 7 && youIndex === 1) || // 을-신
-           (meIndex === 2 && youIndex === 8) || (meIndex === 8 && youIndex === 2) || // 병-임
-           (meIndex === 3 && youIndex === 9) || (meIndex === 9 && youIndex === 3)) { // 정-계
-    return {
-      level: 5,
-      label: '⚡️애증의 관계',
-      description: `${me}과(와) ${you}의 천간충 관계입니다. 서로 충돌하고 대립하는 관계입니다.`,
-      detailedDescription: '서로 충돌하고 대립하는 애증의 관계입니다. 때로는 싸우지만 서로에게 강한 인상을 남기는 관계입니다.',
-      color: '#FF4500',
-      lineWidth: 3,
-      lineStyle: 'dashed',
-      source: meId,
-      target: youId,
-      bidirectional: true, // 양방향
-    };
-  }
-
-  // ============================================
-  // 2순위: 십성 상세 분석 (오행 + 음양)
-  // 특수 관계가 아닐 때만 실행
-  // ============================================
-  
-  const meYinYang = getYinYang(me);
-  const youYinYang = getYinYang(you);
-  const sameYinYang = meYinYang === youYinYang;
-  
-  // 같은 오행인 경우
-  if (meWuxing === youWuxing) {
-    // 비견: 같은 오행, 음양 같음 - 양방향
-    if (sameYinYang) {
-      return {
-        level: 3,
-        label: '영혼의 쌍둥이',
-        description: `${me}과(와) ${you}는 같은 오행이고 음양도 같아서 서로 너무 닮은 영혼의 쌍둥이 관계입니다.`,
-        detailedDescription: '서로 너무 닮아서 때로는 지루할 수 있지만, 편안하고 안정적인 관계입니다.',
-        color: '#4CAF50',
-        lineWidth: 2,
-        lineStyle: 'solid',
-        source: meId,
-        target: youId,
-        bidirectional: true, // 양방향
-      };
-    }
-    // 겁재: 같은 오행, 음양 다름 - 양방향
-    else {
-      return {
-        level: 3,
-        label: '선의의 라이벌',
-        description: `${me}과(와) ${you}는 같은 오행이지만 음양이 달라서 묘한 경쟁심이 있는 선의의 라이벌 관계입니다.`,
-        detailedDescription: '서로 경쟁하면서도 함께 성장할 수 있는 관계입니다.',
-        color: '#8BC34A',
-        lineWidth: 2,
-        lineStyle: 'solid',
-        source: meId,
-        target: youId,
-        bidirectional: true, // 양방향
-      };
-    }
-  }
-  
-  // 오행 관계를 절대적으로 판단 (파라미터 순서와 무관)
-  const wuxingRel = getAbsoluteWuxingRelationship(meWuxing, youWuxing);
-  
-  // 상생 관계인 경우 (절대적 방향으로 판단)
-  if (wuxingRel && wuxingRel.type === 'sheng') {
-    // wuxingRel.source가 wuxingRel.target을 생함
-    const isMeGiving = (wuxingRel.source === meWuxing);
-    const giverId = isMeGiving ? meId : youId;
-    const receiverId = isMeGiving ? youId : meId;
-    const giverStem = isMeGiving ? me : you;
-    const receiverStem = isMeGiving ? you : me;
-    
-    // 내가 상대방을 생해주는 경우 (생 관계: giver → receiver)
-    // 주는 사람(giver) → 받는 사람(receiver)
-    if (isMeGiving) {
-      // 식신: 내가 생함, 음양 같음
-      if (sameYinYang) {
-        return {
-          level: 2,
-          label: '내 최애 아이돌',
-          description: `${giverStem}이(가) ${receiverStem}을(를) 생하고 음양이 같아서 내가 덕질하는 나의 최애 아이돌 관계입니다.`,
-          detailedDescription: '내가 덕질하며 응원하는 관계입니다. 상대방의 성장을 지켜보는 것이 즐거운 관계입니다.',
-          color: '#2196F3', // 따뜻한 색
-          lineWidth: 3,
-          lineStyle: 'solid',
-          source: giverId, // 주는 사람
-          target: receiverId, // 받는 사람
-          bidirectional: false,
-        };
-      }
-      // 상관: 내가 생함, 음양 다름
-      else {
-        return {
-          level: 2,
-          label: '손이 많이 가는 너',
-          description: `${giverStem}이(가) ${receiverStem}을(를) 생하지만 음양이 달라서 잔소리하며 챙기는 손이 많이 가는 너 관계입니다.`,
-          detailedDescription: '잔소리하며 챙기는 관계입니다. 상대방을 위해 많은 신경을 쓰지만 때로는 부담이 될 수 있습니다.',
-          color: '#03A9F4', // 따뜻한 색
-          lineWidth: 3,
-          lineStyle: 'solid',
-          source: giverId, // 주는 사람
-          target: receiverId, // 받는 사람
-          bidirectional: false,
-        };
-      }
-    }
-    // 상대방이 나를 생해주는 경우 (생 관계: giver → receiver)
-    else {
-      // 편인: 나를 생함, 음양 같음
-      if (sameYinYang) {
-        return {
-          level: 2,
-          label: '눈빛만 봐도 통함',
-          description: `${giverStem}이(가) ${receiverStem}을(를) 생하고 음양이 같아서 눈빛만 봐도 통하는 정신적 지주 관계입니다.`,
-          detailedDescription: '눈빛만 봐도 통하는 정신적 지주 관계입니다. 말 없이도 서로를 이해하는 특별한 인연입니다.',
-          color: '#FF9800', // 따뜻한 색
-          lineWidth: 3,
-          lineStyle: 'solid',
-          source: giverId, // 주는 사람
-          target: receiverId, // 받는 사람
-          bidirectional: false,
-        };
-      }
-      // 정인: 나를 생함, 음양 다름
-      else {
-        return {
-          level: 2,
-          label: '아낌없이 주는 나무',
-          description: `${giverStem}이(가) ${receiverStem}을(를) 생하고 음양이 달라서 아낌없이 주는 엄마 같은 사랑의 관계입니다.`,
-          detailedDescription: '아낌없이 주는 엄마 같은 사랑의 관계입니다. 상대방이 나를 위해 많은 것을 베풀어주는 관계입니다.',
-          color: '#FFC107', // 따뜻한 색
-          lineWidth: 3,
-          lineStyle: 'solid',
-          source: giverId, // 주는 사람
-          target: receiverId, // 받는 사람
-          bidirectional: false,
-        };
-      }
-    }
-  }
-  
-  // 상극 관계인 경우 (절대적 방향으로 판단)
-  else if (wuxingRel && wuxingRel.type === 'ke') {
-    // wuxingRel.source가 wuxingRel.target을 극함
-    const isMeWinning = (wuxingRel.source === meWuxing);
-    const winnerId = isMeWinning ? meId : youId;
-    const loserId = isMeWinning ? youId : meId;
-    const winnerStem = isMeWinning ? me : you;
-    const loserStem = isMeWinning ? you : me;
-    
-    // 내가 상대방을 극하는 경우 (극 관계: winner → loser)
-    // 이기는 사람(winner) → 지는 사람(loser)
-    if (isMeWinning) {
-      // 편재: 내가 극함, 음양 같음
-      if (sameYinYang) {
-        return {
-          level: 4,
-          label: '집착광공',
-          description: `${winnerStem}이(가) ${loserStem}을(를) 극하고 음양이 같아서 내 맘대로 하고 싶은 집착광공 관계입니다.`,
-          detailedDescription: '내 맘대로 하고 싶은 집착광공 관계입니다. 상대방을 소유하고 싶은 욕구가 강한 관계입니다.',
-          color: '#9C27B0', // 차가운 색
-          lineWidth: 3,
-          lineStyle: 'solid',
-          source: winnerId, // 이기는 사람
-          target: loserId, // 지는 사람
-          bidirectional: false,
-        };
-      }
-      // 정재: 내가 극함, 음양 다름
-      else {
-        return {
-          level: 4,
-          label: '소중한 내꺼',
-          description: `${winnerStem}이(가) ${loserStem}을(를) 극하지만 음양이 달라서 아끼고 관리하는 소중한 내꺼 관계입니다.`,
-          detailedDescription: '아끼고 관리하는 소중한 내꺼 관계입니다. 상대방을 소중히 여기고 보호하고 싶은 관계입니다.',
-          color: '#E91E63', // 차가운 색
-          lineWidth: 3,
-          lineStyle: 'solid',
-          source: winnerId, // 이기는 사람
-          target: loserId, // 지는 사람
-          bidirectional: false,
-        };
-      }
-    }
-    // 상대방이 나를 극하는 경우 (극 관계: winner → loser)
-    else {
-      // 편관: 나를 극함, 음양 같음
-      if (sameYinYang) {
-        return {
-          level: 4,
-          label: '카리스마 조교님',
-          description: `${winnerStem}이(가) ${loserStem}을(를) 극하고 음양이 같아서 어렵고 무서운 카리스마 조교님 관계입니다.`,
-          detailedDescription: '어렵고 무서운 카리스마 조교님 관계입니다. 상대방이 나를 압박하고 통제하려는 관계입니다.',
-          color: '#F44336', // 차가운 색
-          lineWidth: 3,
-          lineStyle: 'solid',
-          source: winnerId, // 이기는 사람
-          target: loserId, // 지는 사람
-          bidirectional: false,
-        };
-      }
-      // 정관: 나를 극함, 음양 다름
-      else {
-        return {
-          level: 4,
-          label: '바른생활 선도부',
-          description: `${winnerStem}이(가) ${loserStem}을(를) 극하지만 음양이 달라서 나를 바르게 이끄는 바른생활 선도부 관계입니다.`,
-          detailedDescription: '나를 바르게 이끄는 바른생활 선도부 관계입니다. 상대방이 나를 올바른 길로 인도하려는 관계입니다.',
-          color: '#E53935', // 차가운 색
-          lineWidth: 3,
-          lineStyle: 'solid',
-          source: winnerId, // 이기는 사람
-          target: loserId, // 지는 사람
-          bidirectional: false,
-        };
-      }
-    }
-  }
-
-  // 그 외의 경우 (기본값) - 양방향
-  else {
-    return {
-      level: 3,
-      label: '무난',
-      description: `${me}과(와) ${you}는 특별한 십성 관계가 없지만 무난한 관계입니다.`,
-      color: '#9E9E9E',
+      color: '#F44336', // 빨간색
       lineWidth: 2,
-      lineStyle: 'solid',
-      source: meId,
-      target: youId,
-      bidirectional: true, // 양방향
+      lineStyle: 'dashed',
+      level: 5,
     };
   }
+}
+
+/**
+ * 범용 인간관계 모델 기반 종합 점수 계산
+ * @param {object} userASaju - User A의 사주 8글자 데이터
+ * @param {object} userBSaju - User B의 사주 8글자 데이터
+ * @returns {object} 종합 분석 결과
+ */
+export function calculateCompatibilityScore(userASaju, userBSaju) {
+  // 기본 점수 40점
+  const baseScore = 40;
+  
+  // 1단계: 오행 세력 계산
+  const userAPower = calculateWuxingPower(userASaju);
+  const userBPower = calculateWuxingPower(userBSaju);
+  
+  // 2단계: 오행 상호보완 점수 (Max 40점)
+  const complementarity = calculateComplementarityScore(userAPower, userBPower);
+  
+  // 3단계: 일주 매칭 점수 (Max 20점)
+  const dayPillarMatching = calculateDayPillarMatching(userASaju, userBSaju);
+  
+  // 최종 점수 계산
+  let finalScore = baseScore + complementarity.score + dayPillarMatching.score;
+  
+  // 점수 제한 (0~100)
+  finalScore = Math.max(0, Math.min(100, finalScore));
+  
+  return {
+    score: finalScore,
+    maxScore: 100,
+    minScore: 0,
+    baseScore,
+    complementarityScore: complementarity.score,
+    dayPillarScore: dayPillarMatching.score,
+    details: {
+      complementarity: {
+        score: complementarity.score,
+        details: complementarity.details
+      },
+      dayPillar: {
+        score: dayPillarMatching.score,
+        details: dayPillarMatching.details
+      }
+    },
+    wuxingPower: {
+      userA: userAPower,
+      userB: userBPower
+    }
+  };
 }
 
