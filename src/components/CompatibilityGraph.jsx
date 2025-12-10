@@ -110,12 +110,12 @@ const TEXT_TEMPLATES = {
     catchphrase: [
       { 
         // 조건: 천간충 또는 지지충 + 약한 보완 (충돌이 있지만 약한 보완도 있어서 애증 관계)
-        condition: (c) => (c.hasTianganChong || c.hasJijiChong) && c.hasWeakComplementarity,
+        condition: (c) => (c.hasTianganChong || c.hasJijiChong) && c.hasWeakComplementarity && !c.hasSameStem,
         text: (names) => `${names[0]}님과 ${names[1]}님은 만나면 투닥투닥, 없으면 또 심심한\n애증의 환장 케미!`
       },
       { 
         // 조건: 천간충 또는 지지충 태그 (순수 충돌)
-        condition: (c) => c.hasTianganChong || c.hasJijiChong,
+        condition: (c) => (c.hasTianganChong || c.hasJijiChong) && !c.hasSameStem,
         text: (names) => `${names[0]}님과 ${names[1]}님은\n의견이 자주 충돌하지만\n서로를 자극하는 관계예요.`
       },
       { 
@@ -135,7 +135,7 @@ const TEXT_TEMPLATES = {
       },
       { 
         // 조건: 오행 보완 태그 + 적당한 오행 보완(10-19점)
-        condition: (c) => c.hasComplementary && c.hasModerateComplementarity,
+        condition: (c) => c.hasComplementary && c.hasModerateComplementarity && !c.hasSameStem,
         text: (names) => `화성에서 온 ${names[0]}님,\n금성에서 온 ${names[1]}님!\n서로 너무 달라서 더 궁금해요.`
       },
       { 
@@ -156,22 +156,22 @@ const TEXT_TEMPLATES = {
     catchphrase: [
       { 
         // 조건: 천간충 또는 지지충 + 약한 보완 (충돌이 있지만 완전히 나쁜 건 아님)
-        condition: (c) => (c.hasTianganChong || c.hasJijiChong) && c.hasWeakComplementarity,
+        condition: (c) => (c.hasTianganChong || c.hasJijiChong) && c.hasWeakComplementarity && !c.hasSameStem,
         text: (names) => `${names[0]}님과 ${names[1]}님은\n충돌이 있지만 약간의 보완도 있어서\n복잡한 관계예요.`
       },
       { 
         // 조건: 천간충 또는 지지충 태그 (순수 충돌)
-        condition: (c) => c.hasTianganChong || c.hasJijiChong,
+        condition: (c) => (c.hasTianganChong || c.hasJijiChong) && !c.hasSameStem,
         text: (names) => `혹시 전생에 라이벌?\n${names[0]}님과 ${names[1]}님은 만나면 불꽃 튀는 논쟁이 시작되는 마라맛 디베이트 클럽!`
       },
       { 
         // 조건: 보완 없음 + 일주 매칭 없음 (아무 매력도 없음)
-        condition: (c) => c.hasNoComplementarity && c.hasNoDayPillarMatch,
+        condition: (c) => c.hasNoComplementarity && c.hasNoDayPillarMatch && !c.hasSameStem,
         text: (names) => `${names[0]}님과 ${names[1]}님은\n서로에게 특별한 매력이 없는 관계예요.\n거리를 두는 게 편할 수 있어요.`
       },
       { 
         // 조건: 약한 보완만 (에너지 보완은 약간 있지만 충돌도 있음)
-        condition: (c) => c.hasWeakComplementarity && !c.hasDayPillarMatch,
+        condition: (c) => c.hasWeakComplementarity && !c.hasDayPillarMatch && !c.hasSameStem,
         text: (names) => `${names[0]}님과 ${names[1]}님은\n약간의 보완은 있지만\n서로 맞지 않는 부분이 더 많아요.`
       },
       { 
@@ -313,6 +313,11 @@ const CompatibilityGraph = ({ friends, onBack }) => {
     const characteristics = link.characteristics || {};
     const templates = TEXT_TEMPLATES[level]?.catchphrase || TEXT_TEMPLATES.normal.catchphrase;
     const names = [link.friend1Name, link.friend2Name];
+
+    // 같은 일간(비견)이면 가장 먼저 "비슷/통한다" 톤으로 고정
+    if (characteristics.hasSameStem) {
+      return `${names[0]}님과 ${names[1]}님은\n기본 성향이 비슷해 척하면 척 통하는 사이예요.`;
+    }
     
     // 조건에 맞는 첫 번째 템플릿 사용
     for (const template of templates) {
@@ -344,6 +349,12 @@ const CompatibilityGraph = ({ friends, onBack }) => {
     if (relationTags.includes(RELATION_TAGS.SAME_STEM)) {
       tags.push('#비견', '#비슷한특성');
     }
+    if (relationTags.includes(RELATION_TAGS.SOCIAL_HE)) {
+      tags.push('#사회적케미', '#월지합');
+    }
+    if (relationTags.includes(RELATION_TAGS.SOCIAL_CHONG)) {
+      tags.push('#사회적충돌', '#월지조율');
+    }
     if (relationTags.includes(RELATION_TAGS.TIANGAN_CHONG)) {
       tags.push('#천간충', '#의견조율');
     }
@@ -365,12 +376,18 @@ const CompatibilityGraph = ({ friends, onBack }) => {
     const characteristics = link.characteristics || {};
     const hasComplementarityDetails = link.scoreDetails?.complementarity?.details?.length > 0;
     const hasDayPillarDetails = link.scoreDetails?.dayPillar?.details?.length > 0;
+    const names = [link.friend1Name, link.friend2Name];
     
     // 첫 번째 질문: 케미 (태그 기반, 긍정적인 부분만, 점수 제거, 쉬운 용어 사용)
     let chemistryAnswer = '';
     
+    // 비견(같은 일간)이면 기본적으로 "비슷/이해" 톤을 우선 적용
+    if (characteristics.hasSameStem && !characteristics.hasComplementary && !hasComplementarityDetails) {
+      chemistryAnswer = `${names[0]}님과 ${names[1]}님은 기본 성향이 비슷해서 척하면 척 통하는 사이예요. 함께 있으면 편안하고 서로를 이해하기 쉬워요.`;
+    }
+    
     // 특성 정보 기반 설명 우선
-    if (characteristics.hasComplementary && hasComplementarityDetails) {
+    if (!chemistryAnswer && characteristics.hasComplementary && hasComplementarityDetails) {
       let detail = link.scoreDetails.complementarity.details[0];
       // 이름 교체
       detail = detail.replace(/상대가 내 결핍 오행/g, `${link.friend2Name}님이 ${link.friend1Name}님의 부족한 에너지`);
@@ -396,9 +413,9 @@ const CompatibilityGraph = ({ friends, onBack }) => {
       } else {
         chemistryAnswer = `${detail} 서로를 보완하는 요소가 있어요. 함께 있으면 서로에게 도움이 될 수 있어요.`;
       }
-    } else if (characteristics.hasComplementary) {
+    } else if (!chemistryAnswer && characteristics.hasComplementary) {
       chemistryAnswer = `${link.friend1Name}님과 ${link.friend2Name}님은 서로를 잘 채워주는 관계예요. 함께 있으면 서로에게 도움이 되는 느낌이 들 거예요.`;
-    } else if (hasComplementarityDetails) {
+    } else if (!chemistryAnswer && hasComplementarityDetails) {
       let detail = link.scoreDetails.complementarity.details[0];
       detail = detail.replace(/상대가 내 결핍 오행/g, `${link.friend2Name}님이 ${link.friend1Name}님의 부족한 에너지`);
       detail = detail.replace(/상대가 /g, `${link.friend2Name}님이 `);
@@ -414,17 +431,17 @@ const CompatibilityGraph = ({ friends, onBack }) => {
       detail = detail.replace(/적당한 세력/g, '적당한 힘');
       detail = detail.replace(/\(([^)]+)\)/g, '');
       chemistryAnswer = `${detail} 서로를 보완하는 요소가 있어요.`;
-    } else {
+    } else if (!chemistryAnswer) {
       chemistryAnswer = `${link.friend1Name}님과 ${link.friend2Name}님은 함께 있으면 새로운 관점을 얻을 수 있는 관계예요. 서로 다른 강점을 가지고 있어 함께 일할 때 다양한 아이디어가 나올 수 있어요.`;
     }
     
     // 일주 매칭 정보 추가 (특성 정보 기반)
-    if (characteristics.hasTianganHe) {
+    if (characteristics.hasSameStem) {
+      chemistryAnswer += ` 기본 성향이 비슷해서 말하지 않아도 통하는 부분이 많아요.`;
+    } else if (characteristics.hasTianganHe) {
       chemistryAnswer += ` 가치관이 잘 맞아서 함께 있으면 편안하고 서로의 생각을 잘 이해할 수 있어요.`;
     } else if (characteristics.hasJijiHe) {
       chemistryAnswer += ` 성격이 잘 맞아서 함께 있으면 편안하고 호흡이 자연스럽게 맞아요.`;
-    } else if (characteristics.hasSameStem) {
-      chemistryAnswer += ` 서로 비슷한 특성을 가져서 이해하기 쉬운 관계예요.`;
     } else if (hasDayPillarDetails) {
       const positiveDetails = link.scoreDetails.dayPillar.details.filter(d => d.includes('합') || d.includes('천간합'));
       if (positiveDetails.length > 0 && characteristics.hasStrongDayPillarMatch) {
