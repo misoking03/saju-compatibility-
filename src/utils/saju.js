@@ -192,27 +192,79 @@ function calculateDayPillar(year, month, day) {
 }
 
 /**
- * 시의 천간지지 계산 (시주) - 간단한 방법
+ * 시의 천간지지 계산 (시주) - 정확한 시간 구분 적용
  * @param {string} dayStem - 일간 (예: '갑목')
  * @param {number} hour - 시 (0-23)
+ * @param {number} minute - 분 (0-59, 기본값 0)
  * @returns {object} { stem, branch }
  */
-function calculateHourPillar(dayStem, hour) {
-  // 시지 계산
-  const hourToJiji = {
-    23: 0, 0: 0, 1: 1, 2: 1, 3: 2, 4: 2, 5: 3, 6: 3, 7: 4, 8: 4, 9: 5, 10: 5,
-    11: 6, 12: 6, 13: 7, 14: 7, 15: 8, 16: 8, 17: 9, 18: 9, 19: 10, 20: 10, 21: 11, 22: 11
-  };
+function calculateHourPillar(dayStem, hour, minute = 0) {
+  // 정확한 시간 구분 (표 기준: 30분 단위)
+  // 자(子): 23:30 ~ 01:29, 축(丑): 01:30 ~ 03:29, 인(寅): 03:30 ~ 05:29, ...
+  let jijiIndex = 0;
   
-  const jijiIndex = hourToJiji[hour] || 0;
+  // 시간과 분을 고려한 정확한 지지 계산
+  const totalMinutes = hour * 60 + minute;
+  
+  if ((totalMinutes >= 23 * 60 + 30) || (totalMinutes < 1 * 60 + 30)) {
+    jijiIndex = 0; // 자(子): 23:30 ~ 01:29
+  } else if (totalMinutes >= 1 * 60 + 30 && totalMinutes < 3 * 60 + 30) {
+    jijiIndex = 1; // 축(丑): 01:30 ~ 03:29
+  } else if (totalMinutes >= 3 * 60 + 30 && totalMinutes < 5 * 60 + 30) {
+    jijiIndex = 2; // 인(寅): 03:30 ~ 05:29
+  } else if (totalMinutes >= 5 * 60 + 30 && totalMinutes < 7 * 60 + 30) {
+    jijiIndex = 3; // 묘(卯): 05:30 ~ 07:29
+  } else if (totalMinutes >= 7 * 60 + 30 && totalMinutes < 9 * 60 + 30) {
+    jijiIndex = 4; // 진(辰): 07:30 ~ 09:29
+  } else if (totalMinutes >= 9 * 60 + 30 && totalMinutes < 11 * 60 + 30) {
+    jijiIndex = 5; // 사(巳): 09:30 ~ 11:29
+  } else if (totalMinutes >= 11 * 60 + 30 && totalMinutes < 13 * 60 + 30) {
+    jijiIndex = 6; // 오(午): 11:30 ~ 13:29
+  } else if (totalMinutes >= 13 * 60 + 30 && totalMinutes < 15 * 60 + 30) {
+    jijiIndex = 7; // 미(未): 13:30 ~ 15:29
+  } else if (totalMinutes >= 15 * 60 + 30 && totalMinutes < 17 * 60 + 30) {
+    jijiIndex = 8; // 신(申): 15:30 ~ 17:29
+  } else if (totalMinutes >= 17 * 60 + 30 && totalMinutes < 19 * 60 + 30) {
+    jijiIndex = 9; // 유(酉): 17:30 ~ 19:29
+  } else if (totalMinutes >= 19 * 60 + 30 && totalMinutes < 21 * 60 + 30) {
+    jijiIndex = 10; // 술(戌): 19:30 ~ 21:29
+  } else if (totalMinutes >= 21 * 60 + 30 && totalMinutes < 23 * 60 + 30) {
+    jijiIndex = 11; // 해(亥): 21:30 ~ 23:29
+  }
+  
   const branch = JIJI[jijiIndex];
   
-  // 시간 계산 (일간을 기반으로)
+  // 시간 천간 계산 (일간을 기준으로 - 정확한 공식)
   const dayStemChar = dayStem[0];
   const dayStemIndex = TIANGAN.indexOf(dayStemChar);
   
-  // 일간의 천간 인덱스를 기반으로 시간 계산
-  const hourStemIndex = (dayStemIndex * 2 + Math.floor(hour / 2)) % 10;
+  // 일간을 기준으로 시작 천간 결정 (5개의 쌍으로 묶임)
+  // 갑(0)과 기(5): 갑으로 시작
+  // 을(1)과 경(6): 병으로 시작
+  // 병(2)과 신(7): 무로 시작
+  // 정(3)과 임(8): 경으로 시작
+  // 무(4)와 계(9): 임으로 시작
+  let startStemIndex = 0;
+  if (dayStemIndex === 0 || dayStemIndex === 5) {
+    // 갑(0)과 기(5): 갑으로 시작
+    startStemIndex = 0; // 갑
+  } else if (dayStemIndex === 1 || dayStemIndex === 6) {
+    // 을(1)과 경(6): 병으로 시작
+    startStemIndex = 2; // 병
+  } else if (dayStemIndex === 2 || dayStemIndex === 7) {
+    // 병(2)과 신(7): 무로 시작
+    startStemIndex = 4; // 무
+  } else if (dayStemIndex === 3 || dayStemIndex === 8) {
+    // 정(3)과 임(8): 경으로 시작
+    startStemIndex = 6; // 경
+  } else if (dayStemIndex === 4 || dayStemIndex === 9) {
+    // 무(4)와 계(9): 임으로 시작
+    startStemIndex = 8; // 임
+  }
+  
+  // 자시부터 시작해서 각 시간대마다 천간이 순환
+  // 자시(0): 시작 천간, 축시(1): 시작 천간 + 1, 인시(2): 시작 천간 + 2, ...
+  const hourStemIndex = (startStemIndex + jijiIndex) % 10;
   const stem = TIANGAN[hourStemIndex >= 0 ? hourStemIndex : (hourStemIndex + 10) % 10];
   
   return { stem, branch };
@@ -223,16 +275,26 @@ function calculateHourPillar(dayStem, hour) {
  * @param {number} year - 연도
  * @param {number} month - 월 (1-12)
  * @param {number} day - 일
- * @param {number} hour - 시 (0-23, 기본값 0)
+ * @param {number|null} hour - 시 (0-23, null이면 시주 제외)
+ * @param {number|null} minute - 분 (0-59, 기본값 0)
  * @param {boolean} isLunar - 음력 여부
- * @returns {object} 사주 8글자 정보
+ * @returns {object} 사주 8글자 정보 (hour가 null이면 hour_stem, hour_branch도 null)
  */
-export function calculateFullSaju(year, month, day, hour = 0, isLunar = false) {
+export function calculateFullSaju(year, month, day, hour = null, minute = 0, isLunar = false) {
   const yearPillar = calculateYearPillar(year);
   const monthPillar = calculateMonthPillar(year, month);
   const dayPillar = calculateDayPillar(year, month, day);
-  const dayStemWithWuxing = dayPillar.stem + ['목', '화', '토', '금', '수'][TIANGAN_WUXING[TIANGAN.indexOf(dayPillar.stem)]];
-  const hourPillar = calculateHourPillar(dayStemWithWuxing, hour);
+  
+  let hour_stem = null;
+  let hour_branch = null;
+  
+  if (hour !== null && hour !== undefined) {
+    const dayStemWithWuxing = dayPillar.stem + ['목', '화', '토', '금', '수'][TIANGAN_WUXING[TIANGAN.indexOf(dayPillar.stem)]];
+    const finalMinute = minute !== null && minute !== undefined ? minute : 0;
+    const hourPillar = calculateHourPillar(dayStemWithWuxing, hour, finalMinute);
+    hour_stem = hourPillar.stem;
+    hour_branch = hourPillar.branch;
+  }
   
   return {
     year_stem: yearPillar.stem,
@@ -241,8 +303,8 @@ export function calculateFullSaju(year, month, day, hour = 0, isLunar = false) {
     month_branch: monthPillar.branch,
     day_stem: dayPillar.stem,
     day_branch: dayPillar.branch,
-    hour_stem: hourPillar.stem,
-    hour_branch: hourPillar.branch,
+    hour_stem,
+    hour_branch,
   };
 }
 
@@ -297,18 +359,37 @@ function calculateWuxingPower(sajuData) {
     wuxingPower[wuxing] += WEIGHTS.day_branch;
   }
   
-  // 시간 (천간)
-  const hourStemIndex = TIANGAN.indexOf(sajuData.hour_stem);
-  if (hourStemIndex !== -1) {
-    const wuxing = wuxingNames[TIANGAN_WUXING[hourStemIndex]];
-    wuxingPower[wuxing] += WEIGHTS.stem;
+  // 시간 (천간) - 시주가 있는 경우만 계산
+  if (sajuData.hour_stem !== null && sajuData.hour_stem !== undefined) {
+    const hourStemIndex = TIANGAN.indexOf(sajuData.hour_stem);
+    if (hourStemIndex !== -1) {
+      const wuxing = wuxingNames[TIANGAN_WUXING[hourStemIndex]];
+      wuxingPower[wuxing] += WEIGHTS.stem;
+    }
   }
   
-  // 시지
-  const hourBranchIndex = JIJI.indexOf(sajuData.hour_branch);
-  if (hourBranchIndex !== -1) {
-    const wuxing = wuxingNames[JIJI_WUXING[hourBranchIndex]];
-    wuxingPower[wuxing] += WEIGHTS.hour_branch;
+  // 시지 - 시주가 있는 경우만 계산
+  if (sajuData.hour_branch !== null && sajuData.hour_branch !== undefined) {
+    const hourBranchIndex = JIJI.indexOf(sajuData.hour_branch);
+    if (hourBranchIndex !== -1) {
+      const wuxing = wuxingNames[JIJI_WUXING[hourBranchIndex]];
+      wuxingPower[wuxing] += WEIGHTS.hour_branch;
+    }
+  }
+  
+  // 시주 디버깅 정보 출력
+  if (sajuData.hour_stem || sajuData.hour_branch) {
+    console.log(`[오행 세력] 시주 포함: ${sajuData.hour_stem}${sajuData.hour_branch}`, {
+      시주가중치: {
+        hour_stem: WEIGHTS.stem,
+        hour_branch: WEIGHTS.hour_branch
+      },
+      오행세력: wuxingPower
+    });
+  } else {
+    console.log(`[오행 세력] 시주 없음 (6글자만 계산)`, {
+      오행세력: wuxingPower
+    });
   }
   
   return wuxingPower;
@@ -582,8 +663,10 @@ function calculateDayPillarMatching(userASaju, userBSaju) {
     tags.push(RELATION_TAGS.JIJI_CHONG);
   }
   
-  // 같은 일간(비견) 태그
+  // 같은 일간(비견) 태그 및 점수
   if (aDayStem === bDayStem) {
+    score += 5;
+    details.push(`비견 (${aDayStem}) - 서로 비슷한 특성을 가져 이해하기 쉬워요`);
     tags.push(RELATION_TAGS.SAME_STEM);
   }
   
@@ -610,40 +693,45 @@ export function getCompatibilityLabel(score) {
 }
 
 /**
- * 점수에 따른 스타일 정보 생성
+ * 점수에 따른 스타일 정보 생성 (새로운 레벨 기준 반영)
  * @param {number} score - 종합 점수 (0-100)
  * @returns {object} 스타일 정보 { color, lineWidth, lineStyle, level }
  */
 export function getCompatibilityStyle(score) {
-  if (score >= 80) {
+  if (score >= 75) {
+    // excellent: 75점 이상
     return {
       color: '#4CAF50', // 초록색
       lineWidth: 4,
       lineStyle: 'solid',
       level: 1,
     };
-  } else if (score >= 60) {
+  } else if (score >= 55) {
+    // good: 55점 이상
     return {
-      color: '#8BC34A', // 연한 초록색
+      color: '#66BB6A', // 밝은 초록색
       lineWidth: 3,
       lineStyle: 'solid',
       level: 2,
     };
   } else if (score >= 40) {
+    // normal: 40점 이상 (중립적인 컬러)
     return {
-      color: '#FFA500', // 주황색
+      color: '#9E9E9E', // 회색 (중립)
       lineWidth: 2,
       lineStyle: 'solid',
       level: 3,
     };
-  } else if (score >= 20) {
+  } else if (score >= 25) {
+    // caution: 25점 이상
     return {
-      color: '#FF9800', // 진한 주황색
+      color: '#FF9800', // 주황색
       lineWidth: 2,
       lineStyle: 'dashed',
       level: 4,
     };
   } else {
+    // adjustment: 25점 미만
     return {
       color: '#F44336', // 빨간색
       lineWidth: 2,
@@ -660,8 +748,8 @@ export function getCompatibilityStyle(score) {
  * @returns {object} 종합 분석 결과
  */
 export function calculateCompatibilityScore(userASaju, userBSaju) {
-  // 기본 점수 40점
-  const baseScore = 40;
+  // 기본 점수 30점
+  const baseScore = 30;
   
   // 1단계: 오행 세력 계산
   const userAPower = calculateWuxingPower(userASaju);
@@ -681,10 +769,10 @@ export function calculateCompatibilityScore(userASaju, userBSaju) {
   
   // 레벨 정보 추가
   let level = 'normal';
-  if (finalScore >= 80) level = 'excellent';
-  else if (finalScore >= 60) level = 'good';
+  if (finalScore >= 75) level = 'excellent';
+  else if (finalScore >= 55) level = 'good';
   else if (finalScore >= 40) level = 'normal';
-  else if (finalScore >= 20) level = 'caution';
+  else if (finalScore >= 25) level = 'caution';
   else level = 'adjustment';
   
   // 관계 특성 정보 추가

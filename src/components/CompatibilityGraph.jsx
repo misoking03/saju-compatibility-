@@ -37,7 +37,7 @@ import './CompatibilityGraph.css';
  * 마지막 조건은 항상 `() => true`로 설정하여 기본 텍스트(fallback)로 사용됩니다.
  */
 const TEXT_TEMPLATES = {
-  // 최종 점수 80점 이상: 최상의 관계
+  // 최종 점수 75점 이상: 최상의 관계
   excellent: {
     catchphrase: [
       { 
@@ -46,17 +46,12 @@ const TEXT_TEMPLATES = {
         text: (names) => `${names[0]}님과 ${names[1]}님은\n로또 1등 당첨급 확률!\n놓치면 평생 후회할 최강 소울메이트에요.`
       },
       { 
-        // 조건: 적당한 오행 보완(10-19점) + 천간합 또는 지지합 + 충돌 없음
-        condition: (c) => c.hasModerateComplementarity && (c.hasTianganHe || c.hasJijiHe) && !c.hasNegativeDayPillar,
-        text: (names) => `${names[0]}님과 ${names[1]}님은\n이 구역의 환상 콤비!\n마음도 찰떡, 팀워크도 찰떡인 완벽한 짝꿍이에요.`
-      },
-      { 
-        // 조건: 천간합 또는 지지합 있음
+        // 조건: 천간합 또는 지지합 있음 (가치관/성격이 잘 맞음)
         condition: (c) => c.hasTianganHe || c.hasJijiHe,
         text: (names) => `${names[0]}님과 ${names[1]}님은\n이건 중력의 법칙인가요?\n성격은 달라도 자석처럼 끌리는 사이!`
       },
       { 
-        // 조건: 오행 보완 태그 + 강한 오행 보완(20점 이상)
+        // 조건: 오행 보완 태그 + 강한 오행 보완(20점 이상) (에너지 보완이 강함)
         condition: (c) => c.hasComplementary && c.hasStrongComplementarity,
         text: (names) => `${names[0]}님과 ${names[1]}님은\n걸어 다니는 보조 배터리!\n방전된 나를 풀충전 시켜주는 귀인 같은 존재예요.`
       },
@@ -68,7 +63,7 @@ const TEXT_TEMPLATES = {
     ],
     hashtags: ['#소울메이트', '#상호보완', '#속이편안'],
   },
-  // 최종 점수 60-79점: 좋은 관계
+  // 최종 점수 55-74점: 좋은 관계
   good: {
     catchphrase: [
       { 
@@ -78,14 +73,24 @@ const TEXT_TEMPLATES = {
         text: (names) => `${names[0]}님과 ${names[1]}님은\n쿵짝이 아주 잘 맞아요!\n 서로의 다름이 매력으로 느껴지는 꿀조합.`
       },
       { 
-        // 조건: 천간합 또는 지지합 있음
+        // 조건: 천간합 또는 지지합 있음 (가치관/성격이 잘 맞지만 보완은 약함)
         condition: (c) => c.hasTianganHe || c.hasJijiHe,
         text: (names) => `${names[0]}님과 ${names[1]}님,\n자석의 N극과 S극인가요?\n이유 없이 끌리는 묘한 사이!`
       },
       { 
-        // 조건: 오행 보완 태그 + 적당한 오행 보완(10-19점)
+        // 조건: 오행 보완 태그 + 적당한 오행 보완(10-19점) (에너지 보완은 있지만 가치관/성격 매칭은 약함)
         condition: (c) => c.hasComplementary && c.hasModerateComplementarity,
         text: (names) => `${names[0]}님과 ${names[1]}님은\n서로에게 없는 점을 쏙쏙 채워줘요.\n만날수록 서로 득이 되는\nWin-Win 관계!`
+      },
+      { 
+        // 조건: 약한 보완(1-9점) + 일주 매칭 (둘 다 약하지만 합쳐서 좋음)
+        condition: (c) => c.hasWeakComplementarity && c.hasDayPillarMatch,
+        text: (names) => `${names[0]}님과 ${names[1]}님은\n작은 것들이 모여 큰 시너지를 만드는\n꾸준한 관계예요.`
+      },
+      { 
+        // 조건: 보완 없지만 일주 매칭 있음 (가치관/성격은 맞지만 에너지 보완은 없음)
+        condition: (c) => c.hasNoComplementarity && c.hasDayPillarMatch,
+        text: (names) => `${names[0]}님과 ${names[1]}님은\n마음은 잘 맞지만 에너지 보완은 약해요.\n대화로 서로를 이해하는 관계예요.`
       },
       { 
         // 조건: 같은 일간(비견) 태그
@@ -95,49 +100,84 @@ const TEXT_TEMPLATES = {
       { 
         // 기본 텍스트 (위 조건에 해당하지 않는 모든 good 레벨)
         condition: () => true,
-        text: (names) => `자극적인 마라맛은 아니지만\n평양냉면처럼 담백하고\n편안한 관계랍니다.`
+        text: (names) => `자극적인 마라맛은 아니지만\n평냉처럼 담백하고 편안한 관계에요.`
       },
     ],
     hashtags: ['#좋은팀워크', '#균형잡힌관계', '#상호보완'],
   },
-  // 최종 점수 40-59점: 보통 관계
+  // 최종 점수 40-54점: 보통 관계
   normal: {
     catchphrase: [
       { 
-        // 조건: 천간충 또는 지지충 태그
+        // 조건: 천간충 또는 지지충 + 약한 보완 (충돌이 있지만 약한 보완도 있어서 애증 관계)
+        condition: (c) => (c.hasTianganChong || c.hasJijiChong) && c.hasWeakComplementarity,
+        text: (names) => `${names[0]}님과 ${names[1]}님은 만나면 투닥투닥, 없으면 또 심심한\n애증의 환장 케미!`
+      },
+      { 
+        // 조건: 천간충 또는 지지충 태그 (순수 충돌)
         condition: (c) => c.hasTianganChong || c.hasJijiChong,
-        text: (names) => `${names[0]}님과 ${names[1]}님은\n만나면 투닥투닥, 없으면 또 심심한\n애증의 환장 케미!`
+        text: (names) => `${names[0]}님과 ${names[1]}님은\n의견이 자주 충돌하지만\n서로를 자극하는 관계예요.`
+      },
+      { 
+        // 조건: 보완 없음 + 일주 매칭 없음 (중립적, 특별한 매력 없음)
+        condition: (c) => c.hasNoComplementarity && c.hasNoDayPillarMatch,
+        text: (names) => `${names[0]}님과 ${names[1]}님은\n특별한 매력은 없지만\n무난하게 지낼 수 있는 관계예요.`
+      },
+      { 
+        // 조건: 약한 보완만 (에너지 보완은 약간 있음)
+        condition: (c) => c.hasWeakComplementarity && !c.hasDayPillarMatch,
+        text: (names) => `${names[0]}님과 ${names[1]}님은\n서로에게 약간의 도움은 되지만\n큰 시너지는 기대하기 어려워요.`
+      },
+      { 
+        // 조건: 약한 일주 매칭만 (가치관/성격 매칭은 약간 있음)
+        condition: (c) => c.hasModerateDayPillarMatch && c.hasNoComplementarity,
+        text: (names) => `${names[0]}님과 ${names[1]}님은\n가치관이 약간 맞지만\n에너지 보완은 없어요.`
       },
       { 
         // 조건: 오행 보완 태그 + 적당한 오행 보완(10-19점)
         condition: (c) => c.hasComplementary && c.hasModerateComplementarity,
-        text: (names) => `화성에서 온 ${names[0]}님,\n금성에서 온 ${names[1]}님!\n서로 너무 달라서 더 궁금한\n탐구 생활이 시작됐어요.`
+        text: (names) => `화성에서 온 ${names[0]}님,\n금성에서 온 ${names[1]}님!\n서로 너무 달라서 더 궁금해요.`
       },
       { 
         // 조건: 천간합 또는 지지합 있음
         condition: (c) => c.hasTianganHe || c.hasJijiHe,
-        text: (names) => `${names[0]}님과 ${names[1]}님은\n 손발을 조금만 더 맞춰보면\n엄청난 시너지가 날 수 있는\n'잠재력 만렙' 관계입니다.`
+        text: (names) => `${names[0]}님과 ${names[1]}님은 손발을 조금만 더 맞춰보면 엄청난 시너지가 날 수 있는 '잠재력 만렙' 관계입니다.`
       },
       { 
         // 기본 텍스트 (위 조건에 해당하지 않는 모든 normal 레벨)
         condition: () => true,
-        text: (names) => `${names[0]}님과 ${names[1]}님은\n 처음에 확 타오르는 맛은 없어도\n시간이 지날수록 진국이 되는 관계예요.`
+        text: (names) => `${names[0]}님과 ${names[1]}님은 처음에는 서로에게 관심없지만 시간이 지날수록 진국이 되는 관계예요.`
       },
     ],
     hashtags: ['#나쁘지않아', '#맞춰가는재미'],
   },
-  // 최종 점수 20-39점: 주의 필요
+  // 최종 점수 25-39점: 주의 필요
   caution: {
     catchphrase: [
       { 
-        // 조건: 천간충 또는 지지충 태그
+        // 조건: 천간충 또는 지지충 + 약한 보완 (충돌이 있지만 완전히 나쁜 건 아님)
+        condition: (c) => (c.hasTianganChong || c.hasJijiChong) && c.hasWeakComplementarity,
+        text: (names) => `${names[0]}님과 ${names[1]}님은\n충돌이 있지만 약간의 보완도 있어서\n복잡한 관계예요.`
+      },
+      { 
+        // 조건: 천간충 또는 지지충 태그 (순수 충돌)
         condition: (c) => c.hasTianganChong || c.hasJijiChong,
-        text: (names) => `혹시 전생에 라이벌?\n${names[0]}님과 ${names[1]}님은\n만나면 불꽃 튀는 논쟁이 시작되는\n'마라맛' 디베이트 클럽!`
+        text: (names) => `혹시 전생에 라이벌?\n${names[0]}님과 ${names[1]}님은 만나면 불꽃 튀는 논쟁이 시작되는 마라맛 디베이트 클럽!`
+      },
+      { 
+        // 조건: 보완 없음 + 일주 매칭 없음 (아무 매력도 없음)
+        condition: (c) => c.hasNoComplementarity && c.hasNoDayPillarMatch,
+        text: (names) => `${names[0]}님과 ${names[1]}님은\n서로에게 특별한 매력이 없는 관계예요.\n거리를 두는 게 편할 수 있어요.`
+      },
+      { 
+        // 조건: 약한 보완만 (에너지 보완은 약간 있지만 충돌도 있음)
+        condition: (c) => c.hasWeakComplementarity && !c.hasDayPillarMatch,
+        text: (names) => `${names[0]}님과 ${names[1]}님은\n약간의 보완은 있지만\n서로 맞지 않는 부분이 더 많아요.`
       },
       { 
         // 기본 텍스트 (위 조건에 해당하지 않는 모든 caution 레벨)
         condition: () => true,
-        text: (names) => `안드로이드와 아이폰의 만남!\n${names[0]}님과 ${names[1]}님은\n충전기 단자부터 다른 서로를 위해\n'호환 젠더'가 꼭 필요해요.`
+        text: (names) => `안드로이드와 아이폰의 만남!\n${names[0]}님과 ${names[1]}님은\n충전기 단자부터 다른 서로를 위해 호환 젠더가 꼭 필요해요.`
       },
     ],
     hashtags: ['#번역이필요해', '#다름의미학'],
@@ -148,7 +188,7 @@ const TEXT_TEMPLATES = {
       { 
         // 기본 텍스트 (모든 adjustment 레벨)
         condition: () => true,
-        text: (names) => `이 만남, 실화인가요?\n${names[0]}님과 ${names[1]}님은\n서로의 '거리'를 확실히 존중해야\n평화로운 '불가침 조약' 관계!`
+        text: (names) => `이 만남, 실화인가요?\n${names[0]}님과 ${names[1]}님은 서로의 '거리'를 확실히 존중해야 평화로운 '불가침 조약' 관계!`
       },
     ],
     hashtags: ['#난이도최상', '#존중이답이다'],
@@ -184,9 +224,9 @@ const CompatibilityGraph = ({ friends, onBack }) => {
 
   // 오행 색상 매핑
   const wuxingColors = {
-    '목': '#4CAF50', 
+    '목': '#00A73D', 
     '화': '#F44336', 
-    '토': '#FFC107', 
+    '토': '#B46900', 
     '금': '#5A6067', 
     '수': '#006FFF', 
   };
@@ -253,6 +293,18 @@ const CompatibilityGraph = ({ friends, onBack }) => {
     weak.sort((a, b) => a.power - b.power);
     
     return { strong, weak };
+  };
+
+  // level을 라벨로 변환 (캐치프레이즈와 동일한 기준 사용)
+  const getLabelFromLevel = (level) => {
+    const levelToLabel = {
+      'excellent': '최상',
+      'good': '좋음',
+      'normal': '보통',
+      'caution': '주의',
+      'adjustment': '파국'
+    };
+    return levelToLabel[level] || '보통';
   };
 
   // 캐치프레이즈 생성 (설정 기반 - 점수 계산 결과의 레벨과 특성을 기반으로 자동 생성)
@@ -471,8 +523,26 @@ const CompatibilityGraph = ({ friends, onBack }) => {
       ? calculateDayStemLunar(friend.year, friend.month, friend.day)
       : calculateDayStem(friend.year, friend.month, friend.day);
     
-    // 사주 8글자 계산 (시간은 기본값 0시 사용)
-    const fullSaju = calculateFullSaju(friend.year, friend.month, friend.day, 0, friend.isLunar);
+    // 사주 8글자 계산 (시주가 null이면 6글자만 계산)
+    const fullSaju = calculateFullSaju(
+      friend.year, 
+      friend.month, 
+      friend.day, 
+      friend.hour !== undefined ? friend.hour : null,
+      friend.minute !== undefined ? friend.minute : 0,
+      friend.isLunar
+    );
+    
+    // 시주 디버깅 정보 출력
+    console.log(`[시주 확인] ${friend.name}:`, {
+      입력시간: friend.hour !== null && friend.hour !== undefined 
+        ? `${friend.hour}시 ${friend.minute !== null && friend.minute !== undefined ? friend.minute : 0}분`
+        : '없음',
+      시주: fullSaju.hour_stem && fullSaju.hour_branch 
+        ? `${fullSaju.hour_stem}${fullSaju.hour_branch}` 
+        : '없음 (6글자)',
+      전체사주: `${fullSaju.year_stem}${fullSaju.year_branch} ${fullSaju.month_stem}${fullSaju.month_branch} ${fullSaju.day_stem}${fullSaju.day_branch} ${fullSaju.hour_stem || ''}${fullSaju.hour_branch || ''}`.trim()
+    });
     
     return {
       ...friend,
@@ -491,8 +561,8 @@ const CompatibilityGraph = ({ friends, onBack }) => {
         friend2.fullSaju
       );
       
-      // 점수 기반 라벨 및 스타일 생성
-      const label = getCompatibilityLabel(compatibilityScore.score);
+      // level 기반으로 라벨 생성 (캐치프레이즈와 동일한 기준 사용)
+      const label = getLabelFromLevel(compatibilityScore.level);
       const style = getCompatibilityStyle(compatibilityScore.score);
       
       links.push({
@@ -805,28 +875,6 @@ const CompatibilityGraph = ({ friends, onBack }) => {
             viewBox={`0 0 ${containerSize.width} ${containerSize.height}`}
             preserveAspectRatio="xMidYMid meet"
           >
-            <defs>
-              {/* 각 링크의 색상에 맞는 화살표 마커 생성 */}
-              {filteredLinks.map((link) => {
-                const linkColor = link.color || '#999';
-                const markerId = `arrowhead-${link.from}-${link.to}`;
-                return (
-                  <marker
-                    key={markerId}
-                    id={markerId}
-                    markerWidth="6"
-                    markerHeight="6"
-                    refX="5"
-                    refY="3"
-                    orient="auto"
-                  >
-                    <line x1="0" y1="0" x2="6" y2="3" stroke={linkColor} strokeWidth="1.5" />
-                    <line x1="0" y1="6" x2="6" y2="3" stroke={linkColor} strokeWidth="1.5" />
-              </marker>
-                );
-              })}
-            </defs>
-            
             {/* 연결선 그리기 */}
             {filteredLinks.map((link, linkIndex) => {
               const fromPos = nodePositions.find(p => p.id === link.from);
@@ -882,7 +930,6 @@ const CompatibilityGraph = ({ friends, onBack }) => {
                     strokeWidth={2}
                     fill="none"
                     strokeDasharray={link.lineStyle === 'dashed' ? '5,5' : 'none'}
-                    markerEnd={`url(#arrowhead-${link.from}-${link.to})`}
                     className="link-path"
                     onClick={() => handleLinkClick(link)}
                     style={{ cursor: 'pointer' }}

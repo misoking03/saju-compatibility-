@@ -7,7 +7,9 @@ const FriendForm = ({ onAddFriend, friends, onRemoveFriend, onStartAnalysis, onS
   const [year, setYear] = useState('');
   const [month, setMonth] = useState('');
   const [day, setDay] = useState('');
+  const [timeInput, setTimeInput] = useState('');
   const [isLunar, setIsLunar] = useState(false);
+  const [hourUnknown, setHourUnknown] = useState(false);
 
   // 생년월일 입력 시 자동으로 연/월/일로 분리
   const handleBirthdateChange = (e) => {
@@ -80,12 +82,40 @@ const FriendForm = ({ onAddFriend, friends, onRemoveFriend, onStartAnalysis, onS
       return;
     }
 
+    // 시주 처리: 모름으로 체크했으면 null, 아니면 입력된 시간과 분
+    let finalHour = null;
+    let finalMinute = null;
+    if (!hourUnknown && timeInput !== '') {
+      // "1420" 형식으로 입력받아서 파싱
+      const timeStr = timeInput.padStart(4, '0'); // 4자리로 맞춤
+      const hourStr = timeStr.substring(0, 2);
+      const minuteStr = timeStr.substring(2, 4);
+      
+      const hourNum = parseInt(hourStr);
+      const minuteNum = parseInt(minuteStr);
+      
+      if (hourNum < 0 || hourNum > 23) {
+        alert('시간은 0시부터 23시 사이여야 합니다.');
+        return;
+      }
+      
+      if (minuteNum < 0 || minuteNum > 59) {
+        alert('분은 0분부터 59분 사이여야 합니다.');
+        return;
+      }
+      
+      finalHour = hourNum;
+      finalMinute = minuteNum;
+    }
+
     onAddFriend({
       id: Date.now(),
       name,
       year: yearNum,
       month: monthNum,
       day: dayNum,
+      hour: finalHour,
+      minute: finalMinute,
       isLunar,
     });
 
@@ -95,7 +125,9 @@ const FriendForm = ({ onAddFriend, friends, onRemoveFriend, onStartAnalysis, onS
     setYear('');
     setMonth('');
     setDay('');
+    setTimeInput('');
     setIsLunar(false);
+    setHourUnknown(false);
   };
 
   const canStartAnalysis = friends.length >= 2 && friends.length <= 8;
@@ -134,19 +166,45 @@ const FriendForm = ({ onAddFriend, friends, onRemoveFriend, onStartAnalysis, onS
               type="text"
               value={birthdate}
               onChange={handleBirthdateChange}
-              placeholder="생년월일"
+              placeholder="생년월일 (200201)"
               maxLength={8}
               pattern="[0-9]{8}"
             />
+          </div>
+
+          <div className="form-group">
+            <input
+              type="tel"
+              value={timeInput}
+              onChange={(e) => {
+                const value = e.target.value.replace(/[^0-9]/g, ''); // 숫자만 허용
+                if (value.length <= 4) {
+                  setTimeInput(value);
+                  if (value !== '') {
+                    setHourUnknown(false);
+                  }
+                }
+              }}
+              placeholder="태어난 시간 (1200)"
+              maxLength={4}
+              pattern="[0-9]{4}"
+              inputMode="numeric"
+              disabled={hourUnknown}
+            />
             <div className="label-row">
-              <p className="input-hint">8자리 숫자로 입력하세요 (예: 19990816)</p>
+              <p className="input-hint">예: 1420 = 14시 20분</p>
               <label className="checkbox-label">
                 <input
                   type="checkbox"
-                  checked={isLunar}
-                  onChange={(e) => setIsLunar(e.target.checked)}
+                  checked={hourUnknown}
+                  onChange={(e) => {
+                    setHourUnknown(e.target.checked);
+                    if (e.target.checked) {
+                      setTimeInput('');
+                    }
+                  }}
                 />
-                <span>음력</span>
+                <span>모름</span>
               </label>
             </div>
           </div>

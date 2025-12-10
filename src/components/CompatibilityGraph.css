@@ -455,7 +455,6 @@
 /* 스토리텔링형 팝업 스타일 */
 .popup-profiles {
   display: flex;
-  flex-direction: column;
   gap: 16px;
   margin-bottom: 24px;
   justify-content: center;
