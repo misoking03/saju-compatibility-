@@ -1,5 +1,15 @@
 // 사주 일간 계산 및 궁합 분석 유틸리티
 
+// 관계 태그 (점수 외에 관계 식별용)
+export const RELATION_TAGS = {
+  SAME_STEM: 'SAME_STEM',           // 같은 일간 (비견)
+  TIANGAN_HE: 'TIANGAN_HE',         // 천간합
+  TIANGAN_CHONG: 'TIANGAN_CHONG',   // 천간충
+  JIJI_HE: 'JIJI_HE',               // 지지 육합/삼합
+  JIJI_CHONG: 'JIJI_CHONG',         // 지지충/원진/귀문
+  COMPLEMENTARY: 'COMPLEMENTARY',   // 오행 상호보완
+};
+
 // 천간 배열 (10개)
 const TIANGAN = ['갑', '을', '병', '정', '무', '기', '경', '신', '임', '계'];
 // 천간 오행 (0: 목, 1: 화, 2: 토, 3: 금, 4: 수)
@@ -306,6 +316,7 @@ function calculateWuxingPower(sajuData) {
 
 /**
  * 오행 상호보완 점수 계산 (Max 40점)
+ * 스스로 보완 가능 여부를 확인하고, 불가능할 때만 상대방이 보완하는지 확인
  * @param {object} userAPower - User A의 오행 세력
  * @param {object} userBPower - User B의 오행 세력
  * @returns {object} { score, details }
@@ -313,6 +324,10 @@ function calculateWuxingPower(sajuData) {
 function calculateComplementarityScore(userAPower, userBPower) {
   let score = 0;
   const details = [];
+  const tags = [];
+  
+  const wuxingNames = ['목', '화', '토', '금', '수'];
+  const wuxingToIndex = { '목': 0, '화': 1, '토': 2, '금': 3, '수': 4 };
   
   // User A의 가장 약한 오행(결핍) 찾기
   const aMinWuxing = Object.entries(userAPower).reduce((min, [wuxing, power]) => 
@@ -321,19 +336,69 @@ function calculateComplementarityScore(userAPower, userBPower) {
   );
   
   const [minWuxingName, minWuxingValue] = aMinWuxing;
+  const minWuxingIndex = wuxingToIndex[minWuxingName];
   
-  // User B가 A의 결핍 오행을 보완하는지 확인
-  const bMinWuxingPower = userBPower[minWuxingName] || 0.0;
+  // User A가 스스로 보완 가능한지 확인
+  const shengWuxingIndex = WUXING_SHENG[minWuxingIndex];
+  const shengWuxingName = wuxingNames[shengWuxingIndex];
+  const aShengWuxingPower = userAPower[shengWuxingName] || 0.0;
   
-  if (bMinWuxingPower >= 4.0) {  // 월지급 세력
-    score += 40;
-    details.push(`상대가 내 결핍 오행(${minWuxingName})을 월지급 세력(${bMinWuxingPower.toFixed(1)}점)으로 보완 - 최상의 시너지: +40점`);
-  } else if (bMinWuxingPower >= 2.0) {  // 적당한 세력
-    score += 20;
-    details.push(`상대가 내 결핍 오행(${minWuxingName})을 적당한 세력(${bMinWuxingPower.toFixed(1)}점)으로 보완 - 좋은 팀워크: +20점`);
+  // 오행이 아예 0이면 스스로 보완 가능해도 부족으로 간주
+  // 오행이 약간 있지만 부족하면, 스스로 보완 가능하면 상대방에게서 찾을 필요 없음
+  let aScore = 0;
+  if (minWuxingValue === 0 || aShengWuxingPower < 4.0) {
+    // 스스로 보완 불가능하므로 상대방이 보완해주는지 확인
+    const bMinWuxingPower = userBPower[minWuxingName] || 0.0;
+    
+    if (bMinWuxingPower >= 4.0) {  // 월지급 세력
+      aScore = 20;  // 양방향 확인하므로 각각 최대 20점
+      details.push(`상대가 내 결핍 오행(${minWuxingName})을 강하게 보완해 줘요`);
+      tags.push(RELATION_TAGS.COMPLEMENTARY);
+    } else if (bMinWuxingPower >= 2.0) {  // 적당한 세력
+      aScore = 10;  // 양방향 확인하므로 각각 최대 10점
+      details.push(`상대가 내 결핍 오행(${minWuxingName})을 꽤 잘 보완해 줘요`);
+      tags.push(RELATION_TAGS.COMPLEMENTARY);
+    }
   }
+  // 스스로 보완 가능하면 (생성하는 오행을 강하게 가지고 있고, 부족한 오행이 0이 아니면) 점수 없음
   
-  return { score, details };
+  // 반대 방향도 확인 (User B의 부족한 오행을 User A가 보완하는지)
+  const bMinWuxing = Object.entries(userBPower).reduce((min, [wuxing, power]) => 
+    power < min[1] ? [wuxing, power] : min, 
+    ['목', Infinity]
+  );
+  
+  const [bMinWuxingName, bMinWuxingValue] = bMinWuxing;
+  const bMinWuxingIndex = wuxingToIndex[bMinWuxingName];
+  
+  // User B가 스스로 보완 가능한지 확인
+  const bShengWuxingIndex = WUXING_SHENG[bMinWuxingIndex];
+  const bShengWuxingName = wuxingNames[bShengWuxingIndex];
+  const bShengWuxingPower = userBPower[bShengWuxingName] || 0.0;
+  
+  // 오행이 아예 0이면 스스로 보완 가능해도 부족으로 간주
+  // 오행이 약간 있지만 부족하면, 스스로 보완 가능하면 상대방에게서 찾을 필요 없음
+  let bScore = 0;
+  if (bMinWuxingValue === 0 || bShengWuxingPower < 4.0) {
+    // 스스로 보완 불가능하므로 상대방이 보완해주는지 확인
+    const aMinWuxingPower = userAPower[bMinWuxingName] || 0.0;
+    
+    if (aMinWuxingPower >= 4.0) {  // 월지급 세력
+      bScore = 20;  // 양방향 확인하므로 각각 최대 20점
+      details.push(`내가 상대의 결핍 오행(${bMinWuxingName})을 강하게 보완해 줘요`);
+      tags.push(RELATION_TAGS.COMPLEMENTARY);
+    } else if (aMinWuxingPower >= 2.0) {  // 적당한 세력
+      bScore = 10;  // 양방향 확인하므로 각각 최대 10점
+      details.push(`내가 상대의 결핍 오행(${bMinWuxingName})을 꽤 잘 보완해 줘요`);
+      tags.push(RELATION_TAGS.COMPLEMENTARY);
+    }
+  }
+  // 스스로 보완 가능하면 점수 없음
+  
+  // 양방향 점수를 합산하되 최대 40점으로 제한
+  score = Math.min(40, aScore + bScore);
+  
+  return { score, details, tags };
 }
 
 /**
@@ -458,7 +523,7 @@ function checkJijiGuimun(branchA, branchB) {
 }
 
 /**
- * 일주 매칭 점수 계산 (Max 20점: 천간 10점 + 지지 10점)
+ * 일주 매칭 점수 계산 (Max 25점: 천간 15점 + 지지 10점)
  * @param {object} userASaju - User A의 사주 데이터
  * @param {object} userBSaju - User B의 사주 데이터
  * @returns {object} { score, details }
@@ -466,50 +531,63 @@ function checkJijiGuimun(branchA, branchB) {
 function calculateDayPillarMatching(userASaju, userBSaju) {
   let score = 0;
   const details = [];
+  const tags = [];
   
   const aDayStem = userASaju.day_stem;
   const aDayBranch = userASaju.day_branch;
   const bDayStem = userBSaju.day_stem;
   const bDayBranch = userBSaju.day_branch;
   
-  // 천간 분석 - 가치관/소통 (Max 10점)
+  // 천간 분석 - 가치관/소통 (Max 15점)
   if (checkTianganHe(aDayStem, bDayStem)) {
-    score += 10;
-    details.push(`천간합 (${aDayStem}-${bDayStem}) - 업무 합이 잘 맞음: +10점`);
+    score += 15;
+    details.push(`천간합 (${aDayStem}-${bDayStem}) - 가치관 코드가 잘 맞아 말이 술술 통해요`);
+    tags.push(RELATION_TAGS.TIANGAN_HE);
   }
   
   if (checkTianganChong(aDayStem, bDayStem)) {
     score -= 5;
-    details.push(`천간충 (${aDayStem}-${bDayStem}) - 의견 조율이 필요함: -5점`);
+    details.push(`천간충 (${aDayStem}-${bDayStem}) - 관점이 달라 의견 조율이 필요해요`);
+    tags.push(RELATION_TAGS.TIANGAN_CHONG);
   }
   
   // 지지 분석 - 성격/스타일 (Max 10점)
   if (checkJijiLiuhe(aDayBranch, bDayBranch)) {
     score += 10;
-    details.push(`육합 (${aDayBranch}-${bDayBranch}) - 팀워크가 좋음: +10점`);
+    details.push(`육합 (${aDayBranch}-${bDayBranch}) - 성향이 잘 맞아 팀워크가 편안해요`);
+    tags.push(RELATION_TAGS.JIJI_HE);
   }
   
   if (checkJijiSanhe(aDayBranch, bDayBranch)) {
     score += 10;
-    details.push(`삼합 (${aDayBranch}-${bDayBranch}) - 팀워크가 좋음: +10점`);
+    details.push(`삼합 (${aDayBranch}-${bDayBranch}) - 같이 있으면 호흡이 자연스럽게 맞아요`);
+    tags.push(RELATION_TAGS.JIJI_HE);
   }
   
   if (checkJijiChong(aDayBranch, bDayBranch)) {
     score -= 5;
-    details.push(`지지충 (${aDayBranch}-${bDayBranch}) - 성격 차이, 적당한 거리 유지 필요: -5점`);
+    details.push(`지지충 (${aDayBranch}-${bDayBranch}) - 성향 차이가 있어 거리를 두면 편해요`);
+    tags.push(RELATION_TAGS.JIJI_CHONG);
   }
   
   if (checkJijiYuanjin(aDayBranch, bDayBranch)) {
     score -= 5;
-    details.push(`원진살 (${aDayBranch}-${bDayBranch}) - 소통 시 주의 필요: -5점`);
+    details.push(`원진살 (${aDayBranch}-${bDayBranch}) - 감정이 예민해질 수 있어 톤 조절이 필요해요`);
+    tags.push(RELATION_TAGS.JIJI_CHONG);
   }
   
   if (checkJijiGuimun(aDayBranch, bDayBranch)) {
     score -= 5;
-    details.push(`귀문관살 (${aDayBranch}-${bDayBranch}) - 소통 시 주의 필요: -5점`);
+    details.push(`귀문관살 (${aDayBranch}-${bDayBranch}) - 서로 마음 읽기가 어려워 배려가 필요해요`);
+    tags.push(RELATION_TAGS.JIJI_CHONG);
   }
   
-  return { score, details };
+  // 같은 일간(비견) 태그
+  if (aDayStem === bDayStem) {
+    tags.push(RELATION_TAGS.SAME_STEM);
+  }
+  
+  return { score, details, tags };
 }
 
 /**
@@ -601,8 +679,50 @@ export function calculateCompatibilityScore(userASaju, userBSaju) {
   // 점수 제한 (0~100)
   finalScore = Math.max(0, Math.min(100, finalScore));
   
+  // 레벨 정보 추가
+  let level = 'normal';
+  if (finalScore >= 80) level = 'excellent';
+  else if (finalScore >= 60) level = 'good';
+  else if (finalScore >= 40) level = 'normal';
+  else if (finalScore >= 20) level = 'caution';
+  else level = 'adjustment';
+  
+  // 관계 특성 정보 추가
+  const allTags = [
+    ...(complementarity.tags || []),
+    ...(dayPillarMatching.tags || []),
+  ];
+  
+  const characteristics = {
+    // 오행 보완 관련
+    hasStrongComplementarity: complementarity.score >= 20,
+    hasModerateComplementarity: complementarity.score >= 10 && complementarity.score < 20,
+    hasWeakComplementarity: complementarity.score > 0 && complementarity.score < 10,
+    hasNoComplementarity: complementarity.score === 0,
+    
+    // 일주 매칭 관련
+    hasStrongDayPillarMatch: dayPillarMatching.score >= 10,
+    hasModerateDayPillarMatch: dayPillarMatching.score > 0 && dayPillarMatching.score < 10,
+    hasDayPillarConflict: dayPillarMatching.score < 0,
+    hasNoDayPillarMatch: dayPillarMatching.score === 0,
+    
+    // 태그 기반 특성
+    hasTianganHe: allTags.includes(RELATION_TAGS.TIANGAN_HE),
+    hasTianganChong: allTags.includes(RELATION_TAGS.TIANGAN_CHONG),
+    hasJijiHe: allTags.includes(RELATION_TAGS.JIJI_HE),
+    hasJijiChong: allTags.includes(RELATION_TAGS.JIJI_CHONG),
+    hasSameStem: allTags.includes(RELATION_TAGS.SAME_STEM),
+    hasComplementary: allTags.includes(RELATION_TAGS.COMPLEMENTARY),
+    
+    // 복합 특성
+    hasDayPillarMatch: dayPillarMatching.score > 0,
+    hasNegativeDayPillar: allTags.includes(RELATION_TAGS.TIANGAN_CHONG) || allTags.includes(RELATION_TAGS.JIJI_CHONG),
+  };
+  
   return {
     score: finalScore,
+    level, // 레벨 정보 추가
+    characteristics, // 특성 정보 추가
     maxScore: 100,
     minScore: 0,
     baseScore,
@@ -611,17 +731,20 @@ export function calculateCompatibilityScore(userASaju, userBSaju) {
     details: {
       complementarity: {
         score: complementarity.score,
-        details: complementarity.details
+        details: complementarity.details,
+        tags: complementarity.tags
       },
       dayPillar: {
         score: dayPillarMatching.score,
-        details: dayPillarMatching.details
+        details: dayPillarMatching.details,
+        tags: dayPillarMatching.tags
       }
     },
     wuxingPower: {
       userA: userAPower,
       userB: userBPower
-    }
+    },
+    tags: allTags
   };
 }
 

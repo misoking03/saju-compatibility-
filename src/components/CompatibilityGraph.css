@@ -297,6 +297,10 @@
   animation: fadeIn 0.3s;
 }
 
+.popup-overlay.bottom-sheet {
+  align-items: flex-end;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -319,13 +323,14 @@
 
 .popup-content-storytelling {
   background: white;
-  border-radius: 24px;
-  padding: 32px 24px;
-  max-width: 560px;
-  width: 90%;
-  max-height: 90vh;
+  border-radius: 24px 24px 0 0;
+  padding: 28px 20px calc(28px + env(safe-area-inset-bottom, 12px));
+  max-width: 960px;
+  width: 100%;
+  max-height: 88vh;
   overflow-y: auto;
-  position: relative;
+  position: fixed;
+  bottom: 0;
   animation: slideUp 0.3s;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
 }
@@ -453,6 +458,7 @@
   flex-direction: column;
   gap: 16px;
   margin-bottom: 24px;
+  justify-content: center;
 }
 
 .popup-profile-card {
@@ -460,6 +466,16 @@
   border-radius: 16px;
   padding: 16px;
   border: 1px solid #e9ecef;
+  flex: 1 1 calc(50% - 20px); /* 두 카드가 한 줄에 나란히 */
+  min-width: 160px;
+  max-width: 320px;
+}
+
+@media (max-width: 420px) {
+  .popup-profile-card {
+    flex: 1 1 100%; /* 아주 좁은 화면에서는 세로로 */
+    max-width: 100%;
+  }
 }
 
 .profile-header {

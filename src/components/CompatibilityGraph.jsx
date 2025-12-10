@@ -1,6 +1,159 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { calculateDayStem, calculateDayStemLunar, calculateFullSaju, calculateCompatibilityScore, getCompatibilityLabel, getCompatibilityStyle } from '../utils/saju';
+import { calculateDayStem, calculateDayStemLunar, calculateFullSaju, calculateCompatibilityScore, getCompatibilityLabel, getCompatibilityStyle, RELATION_TAGS } from '../utils/saju';
 import './CompatibilityGraph.css';
+
+/**
+ * 텍스트 템플릿 설정
+ * 
+ * 점수 계산 로직 변경 시 여기만 수정하면 모든 텍스트가 자동 반영됩니다.
+ * 
+ * [레벨 기준]
+ * - excellent: 최종 점수 80점 이상
+ * - good: 최종 점수 60-79점
+ * - normal: 최종 점수 40-59점
+ * - caution: 최종 점수 20-39점
+ * - adjustment: 최종 점수 20점 미만
+ * 
+ * [특성 정보 (c) 설명]
+ * - c.hasStrongComplementarity: 오행 보완 점수 20점 이상 (강한 보완)
+ * - c.hasModerateComplementarity: 오행 보완 점수 10-19점 (적당한 보완)
+ * - c.hasWeakComplementarity: 오행 보완 점수 1-9점 (약한 보완)
+ * - c.hasNoComplementarity: 오행 보완 점수 0점 (보완 없음)
+ * - c.hasStrongDayPillarMatch: 일주 매칭 점수 10점 이상 (강한 일주 매칭)
+ * - c.hasModerateDayPillarMatch: 일주 매칭 점수 1-9점 (적당한 일주 매칭)
+ * - c.hasDayPillarConflict: 일주 매칭 점수 음수 (일주 충돌)
+ * - c.hasNoDayPillarMatch: 일주 매칭 점수 0점 (일주 매칭 없음)
+ * - c.hasTianganHe: 천간합 태그 (가치관이 잘 맞음)
+ * - c.hasTianganChong: 천간충 태그 (가치관 충돌)
+ * - c.hasJijiHe: 지지 육합/삼합 태그 (성격이 잘 맞음)
+ * - c.hasJijiChong: 지지충/원진/귀문 태그 (성격 충돌)
+ * - c.hasSameStem: 같은 일간(비견) 태그 (서로 비슷한 특성)
+ * - c.hasComplementary: 오행 상호보완 태그 (에너지 보완)
+ * - c.hasDayPillarMatch: 일주 매칭 점수 양수 (일주 매칭 있음)
+ * - c.hasNegativeDayPillar: 일주 매칭에서 충돌 요소 있음 (천간충 또는 지지충)
+ * 
+ * [조건 우선순위]
+ * 각 레벨 내에서 위에서부터 순서대로 조건을 확인하고, 첫 번째로 만족하는 조건의 텍스트를 사용합니다.
+ * 마지막 조건은 항상 `() => true`로 설정하여 기본 텍스트(fallback)로 사용됩니다.
+ */
+const TEXT_TEMPLATES = {
+  // 최종 점수 80점 이상: 최상의 관계
+  excellent: {
+    catchphrase: [
+      { 
+        // 조건: 강한 오행 보완(20점 이상) + 천간합 또는 지지합 + 충돌 없음
+        condition: (c) => c.hasStrongComplementarity && (c.hasTianganHe || c.hasJijiHe) && !c.hasNegativeDayPillar,
+        text: (names) => `${names[0]}님과 ${names[1]}님은\n로또 1등 당첨급 확률!\n놓치면 평생 후회할 최강 소울메이트에요.`
+      },
+      { 
+        // 조건: 적당한 오행 보완(10-19점) + 천간합 또는 지지합 + 충돌 없음
+        condition: (c) => c.hasModerateComplementarity && (c.hasTianganHe || c.hasJijiHe) && !c.hasNegativeDayPillar,
+        text: (names) => `${names[0]}님과 ${names[1]}님은\n이 구역의 환상 콤비!\n마음도 찰떡, 팀워크도 찰떡인 완벽한 짝꿍이에요.`
+      },
+      { 
+        // 조건: 천간합 또는 지지합 있음
+        condition: (c) => c.hasTianganHe || c.hasJijiHe,
+        text: (names) => `${names[0]}님과 ${names[1]}님은\n이건 중력의 법칙인가요?\n성격은 달라도 자석처럼 끌리는 사이!`
+      },
+      { 
+        // 조건: 오행 보완 태그 + 강한 오행 보완(20점 이상)
+        condition: (c) => c.hasComplementary && c.hasStrongComplementarity,
+        text: (names) => `${names[0]}님과 ${names[1]}님은\n걸어 다니는 보조 배터리!\n방전된 나를 풀충전 시켜주는 귀인 같은 존재예요.`
+      },
+      { 
+        // 기본 텍스트 (위 조건에 해당하지 않는 모든 excellent 레벨)
+        condition: () => true,
+        text: (names) => `${names[0]}님과 ${names[1]}님은\n설명이 필요 없는 갓벽한 사이!\n특별히 노력하지 않아도 숨 쉬듯이 잘 맞는 사이에요.`
+      },
+    ],
+    hashtags: ['#소울메이트', '#상호보완', '#속이편안'],
+  },
+  // 최종 점수 60-79점: 좋은 관계
+  good: {
+    catchphrase: [
+      { 
+        // 조건: 천간합 또는 지지합 + 적당한 오행 보완(10-19점)
+        // 의미: 에너지와 가치관이 잘 맞는 좋은 조합
+        condition: (c) => (c.hasTianganHe || c.hasJijiHe) && c.hasModerateComplementarity,
+        text: (names) => `${names[0]}님과 ${names[1]}님은\n쿵짝이 아주 잘 맞아요!\n 서로의 다름이 매력으로 느껴지는 꿀조합.`
+      },
+      { 
+        // 조건: 천간합 또는 지지합 있음
+        condition: (c) => c.hasTianganHe || c.hasJijiHe,
+        text: (names) => `${names[0]}님과 ${names[1]}님,\n자석의 N극과 S극인가요?\n이유 없이 끌리는 묘한 사이!`
+      },
+      { 
+        // 조건: 오행 보완 태그 + 적당한 오행 보완(10-19점)
+        condition: (c) => c.hasComplementary && c.hasModerateComplementarity,
+        text: (names) => `${names[0]}님과 ${names[1]}님은\n서로에게 없는 점을 쏙쏙 채워줘요.\n만날수록 서로 득이 되는\nWin-Win 관계!`
+      },
+      { 
+        // 조건: 같은 일간(비견) 태그
+        condition: (c) => c.hasSameStem,
+        text: (names) => `눈빛만 봐도 딱 알겠네!\n생각하는 회로가 비슷해서\n척하면 척! 통하는 사이예요.`
+      },
+      { 
+        // 기본 텍스트 (위 조건에 해당하지 않는 모든 good 레벨)
+        condition: () => true,
+        text: (names) => `자극적인 마라맛은 아니지만\n평양냉면처럼 담백하고\n편안한 관계랍니다.`
+      },
+    ],
+    hashtags: ['#좋은팀워크', '#균형잡힌관계', '#상호보완'],
+  },
+  // 최종 점수 40-59점: 보통 관계
+  normal: {
+    catchphrase: [
+      { 
+        // 조건: 천간충 또는 지지충 태그
+        condition: (c) => c.hasTianganChong || c.hasJijiChong,
+        text: (names) => `${names[0]}님과 ${names[1]}님은\n만나면 투닥투닥, 없으면 또 심심한\n애증의 환장 케미!`
+      },
+      { 
+        // 조건: 오행 보완 태그 + 적당한 오행 보완(10-19점)
+        condition: (c) => c.hasComplementary && c.hasModerateComplementarity,
+        text: (names) => `화성에서 온 ${names[0]}님,\n금성에서 온 ${names[1]}님!\n서로 너무 달라서 더 궁금한\n탐구 생활이 시작됐어요.`
+      },
+      { 
+        // 조건: 천간합 또는 지지합 있음
+        condition: (c) => c.hasTianganHe || c.hasJijiHe,
+        text: (names) => `${names[0]}님과 ${names[1]}님은\n 손발을 조금만 더 맞춰보면\n엄청난 시너지가 날 수 있는\n'잠재력 만렙' 관계입니다.`
+      },
+      { 
+        // 기본 텍스트 (위 조건에 해당하지 않는 모든 normal 레벨)
+        condition: () => true,
+        text: (names) => `${names[0]}님과 ${names[1]}님은\n 처음에 확 타오르는 맛은 없어도\n시간이 지날수록 진국이 되는 관계예요.`
+      },
+    ],
+    hashtags: ['#나쁘지않아', '#맞춰가는재미'],
+  },
+  // 최종 점수 20-39점: 주의 필요
+  caution: {
+    catchphrase: [
+      { 
+        // 조건: 천간충 또는 지지충 태그
+        condition: (c) => c.hasTianganChong || c.hasJijiChong,
+        text: (names) => `혹시 전생에 라이벌?\n${names[0]}님과 ${names[1]}님은\n만나면 불꽃 튀는 논쟁이 시작되는\n'마라맛' 디베이트 클럽!`
+      },
+      { 
+        // 기본 텍스트 (위 조건에 해당하지 않는 모든 caution 레벨)
+        condition: () => true,
+        text: (names) => `안드로이드와 아이폰의 만남!\n${names[0]}님과 ${names[1]}님은\n충전기 단자부터 다른 서로를 위해\n'호환 젠더'가 꼭 필요해요.`
+      },
+    ],
+    hashtags: ['#번역이필요해', '#다름의미학'],
+  },
+  // 최종 점수 20점 미만: 조율 필요
+  adjustment: {
+    catchphrase: [
+      { 
+        // 기본 텍스트 (모든 adjustment 레벨)
+        condition: () => true,
+        text: (names) => `이 만남, 실화인가요?\n${names[0]}님과 ${names[1]}님은\n서로의 '거리'를 확실히 존중해야\n평화로운 '불가침 조약' 관계!`
+      },
+    ],
+    hashtags: ['#난이도최상', '#존중이답이다'],
+  },
+};
 
 const CompatibilityGraph = ({ friends, onBack }) => {
   const [selectedLink, setSelectedLink] = useState(null);
@@ -15,8 +168,8 @@ const CompatibilityGraph = ({ friends, onBack }) => {
   const wuxingEmoji = {
     '목': '🌳',
     '화': '🔥',
-    '토': '⛰️',
-    '금': '⚔️',
+    '토': '🏜️',
+    '금': '💎',
     '수': '💧',
   };
 
@@ -31,11 +184,11 @@ const CompatibilityGraph = ({ friends, onBack }) => {
 
   // 오행 색상 매핑
   const wuxingColors = {
-    '목': '#4CAF50', // 초록
-    '화': '#F44336', // 빨강
-    '토': '#FFC107', // 노랑
-    '금': '#9E9E9E', // 회색
-    '수': '#2196F3', // 파랑
+    '목': '#4CAF50', 
+    '화': '#F44336', 
+    '토': '#FFC107', 
+    '금': '#5A6067', 
+    '수': '#006FFF', 
   };
 
   // 일주에서 오행 아이콘 추출
@@ -60,115 +213,112 @@ const CompatibilityGraph = ({ friends, onBack }) => {
     
     // 강한 오행 (평균보다 1.5배 이상)
     const strong = [];
-    // 부족한 오행 (평균보다 0.5배 이하)
+    // 부족한 오행 (평균보다 0.5배 이하, 단 스스로 보완 불가능한 경우만)
     const weak = [];
     
+    // 오행 상생 관계 (생성하는 쪽)
+    const WUXING_SHENG = {
+      0: 1, // 목생화
+      1: 2, // 화생토
+      2: 3, // 토생금
+      3: 4, // 금생수
+      4: 0, // 수생목
+    };
+    
     powerArray.forEach((power, idx) => {
-      if (power >= avg * 1.5 && power > 0) {
-        strong.push({
-          element: wuxingArray[idx],
-          power: power,
-        });
-      } else if (power <= avg * 0.5 && power > 0) {
-        weak.push({
-          element: wuxingArray[idx],
-          power: power,
-        });
+      const wuxing = wuxingArray[idx];
+      
+      if (power >= avg * 1.5) {
+        strong.push({ element: wuxing, power });
+      } else if (power === 0) {
+        // 아예 없는 오행은 생성하는 오행이 있어도 너무 약해서 부족 태그 표시
+        weak.push({ element: wuxing, power });
+      } else if (power <= avg * 0.5) {
+        // 약간 있지만 부족한 경우, 스스로 보완 가능한지 확인
+        const shengWuxingIndex = WUXING_SHENG[idx];
+        const shengWuxingName = wuxingArray[shengWuxingIndex];
+        const shengWuxingPower = wuxingPower[shengWuxingName] || 0;
+        
+        // 스스로 보완 가능하면 (생성하는 오행을 강하게 가지고 있으면) 부족 태그 표시 안 함
+        if (shengWuxingPower < 4.0) {
+          // 스스로 보완 불가능하므로 부족 태그 표시
+          weak.push({ element: wuxing, power });
+        }
+        // 스스로 보완 가능하면 weak에 추가하지 않음
       }
     });
     
-    // 세력 순으로 정렬
     strong.sort((a, b) => b.power - a.power);
+    // 부족은 0이 먼저, 이후 낮은 순
     weak.sort((a, b) => a.power - b.power);
     
     return { strong, weak };
   };
 
-  // 캐치프레이즈 생성 (스토리텔링 방식, 쉬운 용어 사용)
+  // 캐치프레이즈 생성 (설정 기반 - 점수 계산 결과의 레벨과 특성을 기반으로 자동 생성)
   const generateCatchphrase = (link) => {
-    const complementarity = link.complementarityScore;
-    const dayPillar = link.dayPillarScore;
-    const hasComplementarity = complementarity > 0;
-    const hasDayPillarMatch = dayPillar > 0;
-    const hasNegativeDayPillar = link.scoreDetails?.dayPillar?.details?.some(d => d.includes('-') || d.includes('충') || d.includes('원진'));
+    const level = link.level || 'normal';
+    const characteristics = link.characteristics || {};
+    const templates = TEXT_TEMPLATES[level]?.catchphrase || TEXT_TEMPLATES.normal.catchphrase;
+    const names = [link.friend1Name, link.friend2Name];
     
-    // 에너지 보완이 매우 강하고 가치관도 잘 맞는 경우
-    if (complementarity >= 30 && hasDayPillarMatch && !hasNegativeDayPillar) {
-      return `${link.friend1Name}님과 ${link.friend2Name}님은\n서로에게 없는 에너지를 완벽하게 채워주는\n최고의 파트너예요!`;
+    // 조건에 맞는 첫 번째 템플릿 사용
+    for (const template of templates) {
+      if (template.condition(characteristics)) {
+        return template.text(names);
+      }
     }
     
-    // 에너지 보완이 좋고 가치관도 잘 맞는 경우
-    if (complementarity >= 20 && dayPillar >= 10 && !hasNegativeDayPillar) {
-      return `${link.friend1Name}님과 ${link.friend2Name}님은\n에너지와 가치관이 모두 잘 맞는\n완벽한 조합이에요!`;
-    }
-    
-    // 에너지 보완은 좋지만 가치관에서 조율이 필요한 경우
-    if (complementarity >= 20 && dayPillar < 10) {
-      return `${link.friend1Name}님과 ${link.friend2Name}님은\n서로를 잘 채워주지만\n생각이 다를 수 있어서 이해하는 시간이 필요해요.`;
-    }
-    
-    // 가치관은 잘 맞지만 에너지 보완이 약한 경우
-    if (dayPillar >= 10 && complementarity < 20) {
-      return `${link.friend1Name}님과 ${link.friend2Name}님은\n가치관이 잘 맞지만\n서로를 채워주는 건 그냥 그래요.`;
-    }
-    
-    // 가치관에서 충돌이 있는 경우
-    if (hasNegativeDayPillar && complementarity < 20) {
-      return `${link.friend1Name}님과 ${link.friend2Name}님은\n서로 다른 성향이라 충돌할 수 있지만\n이해와 존중으로 극복할 수 있어요.`;
-    }
-    
-    // 에너지 보완만 있는 경우
-    if (hasComplementarity && !hasDayPillarMatch) {
-      return `${link.friend1Name}님과 ${link.friend2Name}님은\n서로를 잘 채워주지만\n생각이 다를 수 있어서 이해하는 시간이 필요해요.`;
-    }
-    
-    // 기본적인 관계
-    if (!hasComplementarity && !hasDayPillarMatch) {
-      return `${link.friend1Name}님과 ${link.friend2Name}님은\n서로 다른 특성을 가진 관계예요.\n소통과 이해를 통해 좋은 관계를 만들어가세요.`;
-    }
-    
-    // 일반적인 경우
-    if (complementarity >= 20 || dayPillar >= 10) {
-      return `${link.friend1Name}님과 ${link.friend2Name}님은\n서로의 부족함을 채워주는\n좋은 파트너예요!`;
-    } else if (complementarity > 0 || dayPillar > 0) {
-      return `${link.friend1Name}님과 ${link.friend2Name}님은\n균형잡힌 관계를 만들어갈 수 있어요.`;
-    } else {
-      return `${link.friend1Name}님과 ${link.friend2Name}님은\n이해와 소통을 통해\n좋은 관계를 만들어가세요.`;
-    }
+    // 기본 텍스트 (fallback)
+    return `${link.friend1Name}님과 ${link.friend2Name}님은\n이해와 소통을 통해\n좋은 관계를 만들어가세요.`;
   };
 
-  // 해시태그 생성
+  // 해시태그 생성 (설정 기반 - 태그와 레벨을 기반으로 자동 생성)
   const generateHashtags = (link) => {
-    const score = link.compatibilityScore;
+    const level = link.level || 'normal';
+    const relationTags = link.tags || [];
     const tags = [];
     
-    if (score >= 80) {
-      tags.push('#천생연분', '#상호보완', '#정서적안정');
-    } else if (score >= 60) {
-      tags.push('#좋은팀워크', '#균형잡힌관계', '#상호보완');
-    } else if (score >= 40) {
-      tags.push('#보통관계', '#조율필요', '#이해필요');
-    } else if (score >= 20) {
-      tags.push('#주의필요', '#소통중요', '#조율필요');
-    } else {
-      tags.push('#주의필요', '#이해필요', '#시간필요');
+    // 태그 기반 해시태그 추가
+    if (relationTags.includes(RELATION_TAGS.TIANGAN_HE)) {
+      tags.push('#천간합', '#가치관합');
+    }
+    if (relationTags.includes(RELATION_TAGS.JIJI_HE)) {
+      tags.push('#지지합', '#성격합');
+    }
+    if (relationTags.includes(RELATION_TAGS.COMPLEMENTARY)) {
+      tags.push('#상호보완', '#에너지보완');
+    }
+    if (relationTags.includes(RELATION_TAGS.SAME_STEM)) {
+      tags.push('#비견', '#비슷한특성');
+    }
+    if (relationTags.includes(RELATION_TAGS.TIANGAN_CHONG)) {
+      tags.push('#천간충', '#의견조율');
+    }
+    if (relationTags.includes(RELATION_TAGS.JIJI_CHONG)) {
+      tags.push('#지지충', '#거리필요');
+    }
+    
+    // 태그가 없으면 레벨 기반 해시태그 사용
+    if (tags.length === 0) {
+      tags.push(...(TEXT_TEMPLATES[level]?.hashtags || TEXT_TEMPLATES.normal.hashtags));
     }
     
     return tags;
   };
 
-  // Q&A 분석 생성 (스토리텔링 방식, 점수 제거, 쉬운 용어 사용)
+  // Q&A 분석 생성 (특성 정보 기반 - 점수 계산 결과의 특성을 활용)
   const generateAnalysis = (link) => {
     const analysis = [];
-    const complementarity = link.complementarityScore;
-    const dayPillar = link.dayPillarScore;
+    const characteristics = link.characteristics || {};
     const hasComplementarityDetails = link.scoreDetails?.complementarity?.details?.length > 0;
     const hasDayPillarDetails = link.scoreDetails?.dayPillar?.details?.length > 0;
     
-    // 첫 번째 질문: 케미 (긍정적인 부분만, 점수 제거, 쉬운 용어 사용)
+    // 첫 번째 질문: 케미 (태그 기반, 긍정적인 부분만, 점수 제거, 쉬운 용어 사용)
     let chemistryAnswer = '';
     
-    if (hasComplementarityDetails) {
+    // 특성 정보 기반 설명 우선
+    if (characteristics.hasComplementary && hasComplementarityDetails) {
       let detail = link.scoreDetails.complementarity.details[0];
       // 이름 교체
       detail = detail.replace(/상대가 내 결핍 오행/g, `${link.friend2Name}님이 ${link.friend1Name}님의 부족한 에너지`);
@@ -187,29 +337,50 @@ const CompatibilityGraph = ({ friends, onBack }) => {
       detail = detail.replace(/적당한 세력/g, '적당한 힘');
       detail = detail.replace(/\(([^)]+)\)/g, '');
       
-      if (complementarity >= 30) {
+      if (characteristics.hasStrongComplementarity) {
         chemistryAnswer = `${detail} ${link.friend1Name}님과 ${link.friend2Name}님은 서로에게 없는 것을 완벽하게 채워주는 최고의 파트너예요. 함께 있으면 편안하고 시너지가 생겨요.`;
-      } else if (complementarity >= 20) {
+      } else if (characteristics.hasModerateComplementarity) {
         chemistryAnswer = `${detail} 서로를 잘 채워주는 좋은 관계예요. 함께 있으면 서로에게 도움이 되는 느낌이 들 거예요.`;
       } else {
         chemistryAnswer = `${detail} 서로를 보완하는 요소가 있어요. 함께 있으면 서로에게 도움이 될 수 있어요.`;
       }
-    } else if (complementarity > 0) {
+    } else if (characteristics.hasComplementary) {
       chemistryAnswer = `${link.friend1Name}님과 ${link.friend2Name}님은 서로를 잘 채워주는 관계예요. 함께 있으면 서로에게 도움이 되는 느낌이 들 거예요.`;
+    } else if (hasComplementarityDetails) {
+      let detail = link.scoreDetails.complementarity.details[0];
+      detail = detail.replace(/상대가 내 결핍 오행/g, `${link.friend2Name}님이 ${link.friend1Name}님의 부족한 에너지`);
+      detail = detail.replace(/상대가 /g, `${link.friend2Name}님이 `);
+      detail = detail.replace(/내 /g, `${link.friend1Name}님의 `);
+      detail = detail.replace(/나의/g, `${link.friend1Name}님의`);
+      detail = detail.replace(/[-+]?\d+점/g, '');
+      detail = detail.replace(/좋은 팀워크: /g, '');
+      detail = detail.replace(/최상의 시너지: /g, '');
+      detail = detail.replace(/ - /g, '. ');
+      detail = detail.replace(/오행\(([^)]+)\)/g, '$1 에너지');
+      detail = detail.replace(/오행/g, '에너지');
+      detail = detail.replace(/월지급 세력/g, '강한 힘');
+      detail = detail.replace(/적당한 세력/g, '적당한 힘');
+      detail = detail.replace(/\(([^)]+)\)/g, '');
+      chemistryAnswer = `${detail} 서로를 보완하는 요소가 있어요.`;
     } else {
       chemistryAnswer = `${link.friend1Name}님과 ${link.friend2Name}님은 함께 있으면 새로운 관점을 얻을 수 있는 관계예요. 서로 다른 강점을 가지고 있어 함께 일할 때 다양한 아이디어가 나올 수 있어요.`;
     }
     
-    // 일주 매칭 정보 추가 (긍정적인 부분만)
-    if (hasDayPillarDetails) {
-      const positiveDetails = link.scoreDetails.dayPillar.details.filter(d => d.includes('+') || d.includes('합') || d.includes('천간합'));
-      
-      if (positiveDetails.length > 0 && dayPillar >= 10) {
+    // 일주 매칭 정보 추가 (특성 정보 기반)
+    if (characteristics.hasTianganHe) {
+      chemistryAnswer += ` 가치관이 잘 맞아서 함께 있으면 편안하고 서로의 생각을 잘 이해할 수 있어요.`;
+    } else if (characteristics.hasJijiHe) {
+      chemistryAnswer += ` 성격이 잘 맞아서 함께 있으면 편안하고 호흡이 자연스럽게 맞아요.`;
+    } else if (characteristics.hasSameStem) {
+      chemistryAnswer += ` 서로 비슷한 특성을 가져서 이해하기 쉬운 관계예요.`;
+    } else if (hasDayPillarDetails) {
+      const positiveDetails = link.scoreDetails.dayPillar.details.filter(d => d.includes('합') || d.includes('천간합'));
+      if (positiveDetails.length > 0 && characteristics.hasStrongDayPillarMatch) {
         chemistryAnswer += ` 가치관도 잘 맞아서 함께 있으면 편안하고 서로의 생각을 잘 이해할 수 있어요.`;
-      } else if (positiveDetails.length > 0 && dayPillar < 10) {
+      } else if (positiveDetails.length > 0 && characteristics.hasModerateDayPillarMatch) {
         chemistryAnswer += ` 가치관도 어느 정도 맞는 편이에요.`;
       }
-    } else if (dayPillar > 0) {
+    } else if (characteristics.hasDayPillarMatch) {
       chemistryAnswer += ` 가치관도 잘 맞는 편이라 함께 있으면 편안한 느낌이 들어요.`;
     }
     
@@ -218,10 +389,24 @@ const CompatibilityGraph = ({ friends, onBack }) => {
       answer: chemistryAnswer,
     });
     
-    // 두 번째 질문: 주의할 점 (쉬운 용어 사용)
+    // 두 번째 질문: 주의할 점 (태그 기반, 쉬운 용어 사용)
     let cautionAnswer = '';
     
-    if (hasDayPillarDetails) {
+    // 특성 정보 기반 우선
+    if (characteristics.hasTianganChong) {
+      cautionAnswer = `${link.friend1Name}님과 ${link.friend2Name}님은 가치관이 달라서 의견이 다를 때가 있을 수 있어요. 서로의 입장을 이해하고 존중한다면 오히려 서로를 성장시키는 관계가 될 수 있어요.`;
+    } else if (characteristics.hasJijiChong) {
+      if (hasDayPillarDetails) {
+        const negativeDetails = link.scoreDetails.dayPillar.details.filter(d => d.includes('원진'));
+        if (negativeDetails.length > 0) {
+          cautionAnswer = `${link.friend1Name}님과 ${link.friend2Name}님은 표현 방식이 달라서 작은 오해가 커질 수 있어요. 명확하게 소통하고 서로의 감정을 배려하는 것이 중요해요.`;
+        } else {
+          cautionAnswer = `${link.friend1Name}님과 ${link.friend2Name}님은 성격이 달라서 거리를 두면 편해요. 서로의 차이를 인정하고 존중하는 것이 중요해요.`;
+        }
+      } else {
+        cautionAnswer = `${link.friend1Name}님과 ${link.friend2Name}님은 성격이 달라서 거리를 두면 편해요. 서로의 차이를 인정하고 존중하는 것이 중요해요.`;
+      }
+    } else if (hasDayPillarDetails) {
       const negativeDetails = link.scoreDetails.dayPillar.details.filter(d => d.includes('-') || d.includes('충') || d.includes('원진'));
       
       if (negativeDetails.length > 0) {
@@ -232,12 +417,12 @@ const CompatibilityGraph = ({ friends, onBack }) => {
         } else {
           cautionAnswer = `${link.friend1Name}님과 ${link.friend2Name}님은 표현 방식이 달라서 오해가 생길 수 있어요. 서로의 예민한 부분을 건드리지 않도록 주의하고, 차이를 인정하는 것이 중요해요.`;
         }
-      } else if (complementarity < 20) {
+      } else if (!characteristics.hasModerateComplementarity && !characteristics.hasComplementary) {
         cautionAnswer = `${link.friend1Name}님과 ${link.friend2Name}님은 서로를 특별히 채워주는 관계는 아니에요. 너무 편한 사이가 되어 경계를 넘지 않도록 주의하세요.`;
       } else {
         cautionAnswer = `전반적으로 좋은 관계지만, 너무 편해져서 선을 넘을 수도 있어요. 서로의 경계를 존중하고 개인 공간을 인정하는 것이 중요해요.`;
       }
-    } else if (complementarity < 20 && dayPillar < 10) {
+    } else if (!characteristics.hasModerateComplementarity && !characteristics.hasDayPillarMatch && !characteristics.hasComplementary) {
       cautionAnswer = `서로를 채워주거나 생각이 맞는 게 특별하지 않아서 초반에는 서로를 이해하는 데 시간이 걸릴 수 있어요. 하지만 서로의 입장을 들어보고 배려한다면 좋은 관계를 만들어갈 수 있어요.`;
     } else {
       cautionAnswer = `함께 일하거나 의논할 때 서로의 의견이 다를 수 있어요. 명확하게 소통하고 서로의 생각을 존중하는 자세가 중요해요.`;
@@ -248,15 +433,24 @@ const CompatibilityGraph = ({ friends, onBack }) => {
       answer: cautionAnswer,
     });
     
-    // 세 번째 질문: 추천 포인트 (긍정적인 경우에만, 쉬운 용어 사용)
+    // 세 번째 질문: 추천 포인트 (태그 기반, 긍정적인 경우에만, 쉬운 용어 사용)
     if (link.compatibilityScore >= 60) {
       let recommendation = '';
       
-      if (complementarity >= 20 && dayPillar >= 10) {
+      // 특성 정보 기반 우선
+      if (characteristics.hasComplementary && (characteristics.hasTianganHe || characteristics.hasJijiHe)) {
         recommendation = `${link.friend1Name}님과 ${link.friend2Name}님은 에너지와 가치관 모두 잘 맞는 최고의 조합이에요. 함께 일하거나 프로젝트를 진행할 때 시너지가 생길 거예요. 서로의 강점을 인정하고 보완해나가면 오랫동안 좋은 관계를 유지할 수 있어요.`;
-      } else if (complementarity >= 20) {
+      } else if (characteristics.hasComplementary) {
         recommendation = `서로를 완벽하게 채워주는 관계예요. 함께 활동하거나 협업할 때 좋은 결과를 얻을 수 있을 거예요.`;
-      } else if (dayPillar >= 10) {
+      } else if (characteristics.hasTianganHe || characteristics.hasJijiHe) {
+        recommendation = `가치관이 잘 맞아서 함께 있으면 편안하고 서로의 의견을 잘 이해할 수 있어요. 함께 일하거나 의논할 때 좋은 시너지가 생길 거예요.`;
+      } else if (characteristics.hasSameStem) {
+        recommendation = `서로 비슷한 특성을 가져서 이해하기 쉬운 관계예요. 함께 일할 때 서로의 의도를 쉽게 파악할 수 있어요.`;
+      } else if (characteristics.hasStrongComplementarity && characteristics.hasStrongDayPillarMatch) {
+        recommendation = `${link.friend1Name}님과 ${link.friend2Name}님은 에너지와 가치관 모두 잘 맞는 최고의 조합이에요. 함께 일하거나 프로젝트를 진행할 때 시너지가 생길 거예요. 서로의 강점을 인정하고 보완해나가면 오랫동안 좋은 관계를 유지할 수 있어요.`;
+      } else if (characteristics.hasStrongComplementarity) {
+        recommendation = `서로를 완벽하게 채워주는 관계예요. 함께 활동하거나 협업할 때 좋은 결과를 얻을 수 있을 거예요.`;
+      } else if (characteristics.hasStrongDayPillarMatch) {
         recommendation = `가치관이 잘 맞아서 함께 있으면 편안하고 서로의 의견을 잘 이해할 수 있어요. 함께 일하거나 의논할 때 좋은 시너지가 생길 거예요.`;
       } else {
         recommendation = `서로 다른 특성을 가진 관계지만, 그 차이가 오히려 균형을 만들어줘요. 서로의 강점을 인정하고 보완해나가면 좋은 관계가 될 거예요.`;
@@ -308,7 +502,7 @@ const CompatibilityGraph = ({ friends, onBack }) => {
         color: style.color,
         lineWidth: style.lineWidth,
         lineStyle: style.lineStyle,
-        level: style.level,
+        styleLevel: style.level, // 스타일 레벨 (1-5)
         bidirectional: true, // 모든 관계는 양방향
         friend1Name: friend1.name,
         friend2Name: friend2.name,
@@ -321,6 +515,11 @@ const CompatibilityGraph = ({ friends, onBack }) => {
         dayPillarScore: compatibilityScore.dayPillarScore,
         scoreDetails: compatibilityScore.details,
         wuxingPower: compatibilityScore.wuxingPower,
+        // 레벨 및 특성 정보 (텍스트 생성에 사용)
+        level: compatibilityScore.level, // 텍스트 레벨 ('excellent', 'good', 'normal', 'caution', 'adjustment')
+        characteristics: compatibilityScore.characteristics,
+        // 태그 정보
+        tags: compatibilityScore.tags || [],
         // 설명 텍스트 (비즈니스 친화적)
         description: `${friend1.name}과(와) ${friend2.name}의 파트너십 점수는 ${compatibilityScore.score}점입니다.`,
         detailedDescription: `기본 점수 ${compatibilityScore.baseScore}점, 오행 상호보완 ${compatibilityScore.complementarityScore}점, 일주 매칭 ${compatibilityScore.dayPillarScore}점으로 구성됩니다.`,
@@ -795,12 +994,8 @@ const CompatibilityGraph = ({ friends, onBack }) => {
               ×
             </button>
               
-              {/* 통합 캐치프레이즈 및 점수 섹션 */}
+              {/* 통합 캐치프레이즈 및 해시태그 섹션 */}
               <div className="popup-unified-section">
-                <div className="score-display">
-                  <span className="score-number">{selectedLink.compatibilityScore}</span>
-                  <span className="score-max">/ 100</span>
-                </div>
                 <p className="catchphrase-text">{catchphrase}</p>
                 <div className="hashtags">
                   {hashtags.map((tag, idx) => (
