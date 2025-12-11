@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { calculateDayStem, calculateDayStemLunar, calculateFullSaju, calculateCompatibilityScore, getCompatibilityLabel, getCompatibilityStyle, RELATION_TAGS } from '../utils/saju';
 import { encodeFriendsToUrl, copyToClipboard } from '../utils/shareUtils';
+import html2canvas from 'html2canvas';
 import './CompatibilityGraph.css';
 
 /**
@@ -932,60 +933,79 @@ const CompatibilityGraph = ({ friends, onBack }) => {
     setSelectedLink(link);
   };
 
+  // 이미지 다운로드 헬퍼 함수
+  const downloadImage = useCallback((canvas) => {
+    canvas.toBlob((blob) => {
+      if (blob) {
+        const downloadUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.download = `사주궁합분석_${new Date().getTime()}.jpg`;
+        link.href = downloadUrl;
+        link.click();
+        URL.revokeObjectURL(downloadUrl);
+      } else {
+        alert('이미지 저장에 실패했습니다.');
+      }
+    }, 'image/jpeg', 0.9);
+  }, []);
+
   // 이미지 저장 함수
-  const handleSaveImage = useCallback(() => {
+  const handleSaveImage = useCallback(async () => {
     if (!containerRef.current) return;
 
     try {
       const container = containerRef.current;
-      const svg = svgRef.current;
       
-      if (!svg) {
-        alert('그래프를 불러오는 중입니다. 잠시 후 다시 시도해주세요.');
-        return;
-      }
+      // html2canvas로 전체 컨테이너 캡처
+      const canvas = await html2canvas(container, {
+        backgroundColor: '#ffffff',
+        scale: 2, // 고해상도
+        useCORS: true,
+        logging: false,
+        allowTaint: false,
+      });
 
-      // SVG를 문자열로 변환
-      const svgData = new XMLSerializer().serializeToString(svg);
-      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-      const url = URL.createObjectURL(svgBlob);
-
-      // Canvas로 변환
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = container.offsetWidth;
-        canvas.height = container.offsetHeight;
-        const ctx = canvas.getContext('2d');
-        
-        // 흰색 배경
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
-        // SVG 이미지 그리기
-        ctx.drawImage(img, 0, 0);
-        
-        // JPG로 변환
-        canvas.toBlob((blob) => {
+      // 모바일 체크
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      
+      if (isMobile) {
+        // 모바일: Web Share API 사용
+        canvas.toBlob(async (blob) => {
           if (blob) {
-            const downloadUrl = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.download = `사주궁합분석_${new Date().getTime()}.jpg`;
-            link.href = downloadUrl;
-            link.click();
-            URL.revokeObjectURL(downloadUrl);
-            URL.revokeObjectURL(url);
+            const file = new File([blob], `사주궁합분석_${new Date().getTime()}.jpg`, {
+              type: 'image/jpeg',
+            });
+            
+            if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+              try {
+                await navigator.share({
+                  files: [file],
+                  title: '사주 궁합 분석 결과',
+                  text: '사주 궁합 분석 결과를 공유합니다.',
+                });
+              } catch (error) {
+                if (error.name !== 'AbortError') {
+                  // 공유 취소가 아닌 경우 fallback
+                  downloadImage(canvas);
+                }
+              }
+            } else {
+              // Web Share API를 지원하지 않는 경우 fallback
+              downloadImage(canvas);
+            }
           } else {
             alert('이미지 저장에 실패했습니다.');
           }
         }, 'image/jpeg', 0.9);
-      };
-      img.src = url;
+      } else {
+        // 데스크톱: 다운로드
+        downloadImage(canvas);
+      }
     } catch (error) {
       console.error('이미지 저장 실패:', error);
       alert('이미지 저장 중 오류가 발생했습니다.');
     }
-  }, []);
+  }, [downloadImage]);
 
   // 결과 저장 함수
   const handleSaveResultClick = useCallback(() => {
