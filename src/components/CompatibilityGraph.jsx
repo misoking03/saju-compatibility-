@@ -675,14 +675,30 @@ const CompatibilityGraph = ({ friends, onBack }) => {
 
   // 공유 함수
   const handleShare = async () => {
-    const shareUrl = encodeFriendsToUrl(friends);
-    const success = await copyToClipboard(shareUrl);
-    
-    if (success) {
-      setShareSuccess(true);
-      setTimeout(() => setShareSuccess(false), 2000);
-    } else {
-      alert('URL 복사에 실패했습니다. 브라우저를 확인해주세요.');
+    try {
+      if (!friends || friends.length === 0) {
+        alert('공유할 친구 정보가 없습니다.');
+        return;
+      }
+
+      const shareUrl = encodeFriendsToUrl(friends);
+      
+      if (!shareUrl) {
+        alert('URL 생성에 실패했습니다.');
+        return;
+      }
+      
+      const success = await copyToClipboard(shareUrl);
+      
+      if (success) {
+        setShareSuccess(true);
+        setTimeout(() => setShareSuccess(false), 2000);
+      } else {
+        alert('URL 복사에 실패했습니다. 브라우저를 확인해주세요.');
+      }
+    } catch (error) {
+      console.error('공유 중 오류 발생:', error);
+      alert('공유 중 오류가 발생했습니다: ' + error.message);
     }
   };
 
