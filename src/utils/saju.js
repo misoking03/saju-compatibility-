@@ -10,6 +10,8 @@ export const RELATION_TAGS = {
   COMPLEMENTARY: 'COMPLEMENTARY',   // 오행 상호보완
   SOCIAL_HE: 'SOCIAL_HE',           // 월지 합/삼합
   SOCIAL_CHONG: 'SOCIAL_CHONG',     // 월지 충/원진/귀문
+  SIMILAR_WUXING: 'SIMILAR_WUXING', // 오행 분포 유사
+  SAME_STRONG_WUXING: 'SAME_STRONG_WUXING', // 같은 오행 과다
 };
 
 // 천간 배열 (10개)
@@ -155,7 +157,7 @@ function calculateMonthPillar(year, month) {
   const stemIndex = (totalMonths + BASE_STEM_INDEX) % 10;
   const jijiIndex = (totalMonths + BASE_JIJI_INDEX) % 12;
   
-  return {
+    return {
     stem: TIANGAN[stemIndex >= 0 ? stemIndex : (stemIndex + 10) % 10],
     branch: JIJI[jijiIndex >= 0 ? jijiIndex : (jijiIndex + 12) % 12]
   };
@@ -187,7 +189,7 @@ function calculateDayPillar(year, month, day) {
   const stemIndex = (totalDays + BASE_STEM_INDEX) % 10;
   const jijiIndex = (totalDays + BASE_JIJI_INDEX - 1) % 12; // -1 버그 수정 반영
   
-  return {
+    return {
     stem: TIANGAN[stemIndex >= 0 ? stemIndex : (stemIndex + 10) % 10],
     branch: JIJI[jijiIndex >= 0 ? jijiIndex : (jijiIndex + 12) % 12]
   };
@@ -398,6 +400,46 @@ function calculateWuxingPower(sajuData) {
 }
 
 /**
+ * 오행 분포 유사도 계산
+ * 두 사람의 오행 세력 분포가 얼마나 유사한지 계산 (0-1, 1에 가까울수록 유사)
+ * @param {object} userAPower - User A의 오행 세력
+ * @param {object} userBPower - User B의 오행 세력
+ * @returns {number} 유사도 (0-1)
+ */
+function calculateWuxingSimilarity(userAPower, userBPower) {
+  const wuxingNames = ['목', '화', '토', '금', '수'];
+  
+  // 각 오행의 세력을 배열로 변환
+  const aPowers = wuxingNames.map(w => userAPower[w] || 0);
+  const bPowers = wuxingNames.map(w => userBPower[w] || 0);
+  
+  // 총합 계산
+  const aTotal = aPowers.reduce((sum, p) => sum + p, 0);
+  const bTotal = bPowers.reduce((sum, p) => sum + p, 0);
+  
+  // 총합이 0이면 유사도 0
+  if (aTotal === 0 || bTotal === 0) return 0;
+  
+  // 정규화 (비율로 변환)
+  const aNormalized = aPowers.map(p => p / aTotal);
+  const bNormalized = bPowers.map(p => p / bTotal);
+  
+  // 코사인 유사도 계산
+  let dotProduct = 0;
+  let aMagnitude = 0;
+  let bMagnitude = 0;
+  
+  for (let i = 0; i < wuxingNames.length; i++) {
+    dotProduct += aNormalized[i] * bNormalized[i];
+    aMagnitude += aNormalized[i] * aNormalized[i];
+    bMagnitude += bNormalized[i] * bNormalized[i];
+  }
+  
+  const similarity = dotProduct / (Math.sqrt(aMagnitude) * Math.sqrt(bMagnitude));
+  return similarity;
+}
+
+/**
  * 오행 상호보완 점수 계산 (Max 35점)
  * 스스로 보완 가능 여부를 확인하고, 불가능할 때만 상대방이 보완하는지 확인
  * @param {object} userAPower - User A의 오행 세력
@@ -480,6 +522,19 @@ function calculateComplementarityScore(userAPower, userBPower) {
   
   // 양방향 점수를 합산하되 최대 35점으로 제한
   score = Math.min(35, aScore + bScore);
+  
+  // 둘 다 같은 오행이 강한 경우 확인 (점수에는 반영하지 않고 텍스트/태그용)
+  wuxingNames.forEach(wuxing => {
+    const aPower = userAPower[wuxing] || 0;
+    const bPower = userBPower[wuxing] || 0;
+    
+    // 둘 다 4.0 이상이면 같은 오행이 강함 (월지급 세력)
+    if (aPower >= 4.0 && bPower >= 4.0) {
+      const wuxingNames = ['목', '화', '토', '금', '수'];
+      details.push(`둘 다 ${wuxing} 기운이 강해서 서로 비슷한 강점을 가져요`);
+      tags.push(RELATION_TAGS.SAME_STRONG_WUXING);
+    }
+  });
   
   return { score, details, tags };
 }
@@ -624,45 +679,45 @@ function calculateDayPillarMatching(userASaju, userBSaju) {
   // Mental Chemistry: 일간
   if (checkTianganHe(aDayStem, bDayStem)) {
     stemScore += 20;
-    details.push(`천간합 (${aDayStem}-${bDayStem}) - 가치관 코드가 잘 맞아 말이 술술 통해요`);
+    details.push(`천간합 (${aDayStem}-${bDayStem}) - 가치관이 조화를 이루어서 말 한마디로 통하는 사이예요`);
     tags.push(RELATION_TAGS.TIANGAN_HE);
   }
   if (checkTianganChong(aDayStem, bDayStem)) {
     stemScore -= 3; // 완화
-    details.push(`천간충 (${aDayStem}-${bDayStem}) - 관점이 달라 의견 조율이 필요해요`);
+    details.push(`천간충 (${aDayStem}-${bDayStem}) - 생각하는 방식이 달라서 가끔 의견이 엇갈릴 수 있어요`);
     tags.push(RELATION_TAGS.TIANGAN_CHONG);
   }
   
   // Lifestyle Chemistry: 일지
   if (checkJijiLiuhe(aDayBranch, bDayBranch)) {
     branchScore += 8; // 육합
-    details.push(`육합 (${aDayBranch}-${bDayBranch}) - 성향이 잘 맞아 팀워크가 편안해요`);
+    details.push(`육합 (${aDayBranch}-${bDayBranch}) - 성격이 찰떡같이 맞아서 함께 있으면 편안하고 좋아요`);
     tags.push(RELATION_TAGS.JIJI_HE);
   }
   if (checkJijiSanhe(aDayBranch, bDayBranch)) {
     branchScore += 7; // 삼합
-    details.push(`삼합 (${aDayBranch}-${bDayBranch}) - 같이 있으면 호흡이 자연스럽게 맞아요`);
+    details.push(`삼합 (${aDayBranch}-${bDayBranch}) - 같이 있으면 호흡이 자연스럽게 맞아서 편안해요`);
     tags.push(RELATION_TAGS.JIJI_HE);
   }
   if (checkJijiChong(aDayBranch, bDayBranch)) {
     branchScore -= 3; // 완화
-    details.push(`지지충 (${aDayBranch}-${bDayBranch}) - 성향 차이가 있어 거리를 두면 편해요`);
+    details.push(`지지충 (${aDayBranch}-${bDayBranch}) - 성격이 달라서 가끔 마찰이 생길 수 있지만, 적당한 거리를 두면 오히려 좋아요`);
     tags.push(RELATION_TAGS.JIJI_CHONG);
   }
   if (checkJijiYuanjin(aDayBranch, bDayBranch)) {
     branchScore -= 3; // 완화
-    details.push(`원진살 (${aDayBranch}-${bDayBranch}) - 감정이 예민해질 수 있어 톤 조절이 필요해요`);
+    details.push(`원진살 (${aDayBranch}-${bDayBranch}) - 표현 방식이 달라서 작은 말 한마디가 예민하게 느껴질 수 있어요`);
     tags.push(RELATION_TAGS.JIJI_CHONG);
   }
   if (checkJijiGuimun(aDayBranch, bDayBranch)) {
     branchScore -= 3; // 완화
-    details.push(`귀문관살 (${aDayBranch}-${bDayBranch}) - 서로 마음 읽기가 어려워 배려가 필요해요`);
+    details.push(`귀문관살 (${aDayBranch}-${bDayBranch}) - 서로 마음 읽기가 어려워서 가끔 오해가 생길 수 있어요`);
     tags.push(RELATION_TAGS.JIJI_CHONG);
   }
   
   // 같은 일간(비견) 태그 (점수는 Mental에 포함하지 않고 태그/텍스트용)
   if (aDayStem === bDayStem) {
-    details.push(`비견 (${aDayStem}) - 서로 비슷한 특성을 가져 이해하기 쉬워요`);
+    details.push(`비견 (${aDayStem}) - 서로 비슷한 특성을 가져서 눈빛만 봐도 알 수 있는 사이예요`);
     tags.push(RELATION_TAGS.SAME_STEM);
   }
   
@@ -685,27 +740,27 @@ function calculateMonthBranchMatching(userASaju, userBSaju) {
   
   if (checkJijiLiuhe(aMonthBranch, bMonthBranch)) {
     branchScore += 8;
-    details.push(`월지 육합 (${aMonthBranch}-${bMonthBranch}) - 사회적/조직 내 호흡이 잘 맞아요`);
+    details.push(`월지 육합 (${aMonthBranch}-${bMonthBranch}) - 팀으로 일할 때 호흡이 잘 맞아서 시너지가 나요`);
     tags.push(RELATION_TAGS.SOCIAL_HE);
   }
   if (checkJijiSanhe(aMonthBranch, bMonthBranch)) {
     branchScore += 7;
-    details.push(`월지 삼합 (${aMonthBranch}-${bMonthBranch}) - 사회적 케미가 자연스럽게 맞아요`);
+    details.push(`월지 삼합 (${aMonthBranch}-${bMonthBranch}) - 조직 내에서 자연스럽게 케미가 맞아요`);
     tags.push(RELATION_TAGS.SOCIAL_HE);
   }
   if (checkJijiChong(aMonthBranch, bMonthBranch)) {
     branchScore -= 3; // 완화
-    details.push(`월지 충 (${aMonthBranch}-${bMonthBranch}) - 사회적 역할에서 충돌이 있을 수 있어요`);
+    details.push(`월지 충 (${aMonthBranch}-${bMonthBranch}) - 사회적 역할에서 가끔 충돌이 있을 수 있어요`);
     tags.push(RELATION_TAGS.SOCIAL_CHONG);
   }
   if (checkJijiYuanjin(aMonthBranch, bMonthBranch)) {
     branchScore -= 3; // 완화
-    details.push(`월지 원진 (${aMonthBranch}-${bMonthBranch}) - 사회적 관계에서 예민해질 수 있어요`);
+    details.push(`월지 원진 (${aMonthBranch}-${bMonthBranch}) - 사회적 관계에서 예민해질 수 있어서 톤 조절이 필요해요`);
     tags.push(RELATION_TAGS.SOCIAL_CHONG);
   }
   if (checkJijiGuimun(aMonthBranch, bMonthBranch)) {
     branchScore -= 3; // 완화
-    details.push(`월지 귀문 (${aMonthBranch}-${bMonthBranch}) - 팀 협업 시 오해가 생길 수 있어요`);
+    details.push(`월지 귀문 (${aMonthBranch}-${bMonthBranch}) - 팀 협업할 때 서로의 의도를 파악하기 어려울 수 있어요`);
     tags.push(RELATION_TAGS.SOCIAL_CHONG);
   }
   
@@ -739,18 +794,18 @@ export function getCompatibilityLabel(score) {
 export function getCompatibilityStyle(score) {
   if (score >= 75) {
     // excellent: 75점 이상
-    return {
+        return {
       color: '#4CAF50', // 초록색
       lineWidth: 4,
-      lineStyle: 'solid',
+          lineStyle: 'solid',
       level: 1,
-    };
+        };
   } else if (score >= 55) {
     // good: 55점 이상
-    return {
+        return {
       color: '#66BB6A', // 밝은 초록색
-      lineWidth: 3,
-      lineStyle: 'solid',
+          lineWidth: 3,
+          lineStyle: 'solid',
       level: 2,
     };
   } else if (score >= 40) {
@@ -794,7 +849,11 @@ export function calculateCompatibilityScore(userASaju, userBSaju) {
   const userAPower = calculateWuxingPower(userASaju);
   const userBPower = calculateWuxingPower(userBSaju);
   
-  // 2단계: Mutual Complementarity (Max 30점)
+  // 오행 분포 유사도 계산
+  const wuxingSimilarity = calculateWuxingSimilarity(userAPower, userBPower);
+  const isSimilarWuxing = wuxingSimilarity >= 0.75; // 75% 이상 유사하면 유사하다고 판단
+  
+  // 2단계: Mutual Complementarity (Max 35점)
   const complementarity = calculateComplementarityScore(userAPower, userBPower);
   
   // 3단계: Mental/Lifestyle (일간/일지)
@@ -828,6 +887,11 @@ export function calculateCompatibilityScore(userASaju, userBSaju) {
     ...(monthMatching.tags || []),
   ];
   
+  // 오행 분포 유사도 태그 추가 (보완이 없고 유사도가 높을 때)
+  if (isSimilarWuxing && complementarity.score === 0) {
+    allTags.push(RELATION_TAGS.SIMILAR_WUXING);
+  }
+  
   const characteristics = {
     // 오행 보완 관련
     hasStrongComplementarity: complementarity.score >= 20,
@@ -850,6 +914,8 @@ export function calculateCompatibilityScore(userASaju, userBSaju) {
     hasSocialChong: allTags.includes(RELATION_TAGS.SOCIAL_CHONG),
     hasSameStem: allTags.includes(RELATION_TAGS.SAME_STEM),
     hasComplementary: allTags.includes(RELATION_TAGS.COMPLEMENTARY),
+    hasSimilarWuxing: allTags.includes(RELATION_TAGS.SIMILAR_WUXING),
+    hasSameStrongWuxing: allTags.includes(RELATION_TAGS.SAME_STRONG_WUXING),
     
     // 복합 특성
     hasDayPillarMatch: dayPillarMatching.score > 0,

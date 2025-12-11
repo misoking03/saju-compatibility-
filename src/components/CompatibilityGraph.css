@@ -622,6 +622,70 @@
   font-weight: 600;
   color: #667eea;
   font-family: 'Pretendard', sans-serif;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.hashtag:hover {
+  background: #f0f4ff;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+}
+
+.hashtag-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #2d3748;
+  color: white;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  min-width: 200px;
+  max-width: 400px;
+  white-space: normal;
+  z-index: 10000; /* 다른 요소들보다 위에 표시되도록 상향 */
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  animation: tooltipFadeIn 0.2s ease-out;
+  word-wrap: break-word; /* 긴 단어 줄바꿈 */
+}
+
+.hashtag-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #2d3748;
+}
+
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* 모바일에서 툴팁 위치 조정 */
+@media (max-width: 768px) {
+  .hashtag-tooltip {
+    min-width: 180px;
+    max-width: calc(100vw - 40px); /* 화면 경계를 벗어나지 않도록 */
+    font-size: 12px;
+    padding: 10px 14px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
 }
 
 .popup-analysis {
