@@ -8,8 +8,13 @@ export function encodeFriendsToUrl(friends) {
 
     const data = friends.map(f => ({
       n: f.name,           // 이름
-      b: f.birthdate,      // 생년월일 (200201 형식)
-      g: f.gender || ''    // 성별 (선택사항)
+      y: f.year,           // 연도 (숫자)
+      m: f.month,          // 월 (숫자)
+      d: f.day,            // 일 (숫자)
+      h: f.hour !== null && f.hour !== undefined ? f.hour : null,   // 시
+      min: f.minute !== null && f.minute !== undefined ? f.minute : null, // 분
+      l: f.isLunar || false, // 음력 여부
+      g: f.gender || ''    // 성별
     }));
     
     // JSON 문자열로 변환
@@ -42,11 +47,16 @@ export function decodeFriendsFromUrl() {
     )));
     const data = JSON.parse(decoded);
     
-    // 친구 객체로 변환 (id 추가)
+    // 친구 객체로 변환 (모든 필수 필드 포함)
     return data.map((f, index) => ({
       id: `friend-${Date.now()}-${index}`,
       name: f.n,
-      birthdate: f.b,
+      year: parseInt(f.y),
+      month: parseInt(f.m),
+      day: parseInt(f.d),
+      hour: f.h !== null && f.h !== undefined ? parseInt(f.h) : null,
+      minute: f.min !== null && f.min !== undefined ? parseInt(f.min) : null,
+      isLunar: f.l === true,
       gender: f.g || '',
     }));
   } catch (error) {
