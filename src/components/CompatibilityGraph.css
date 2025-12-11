@@ -51,15 +51,14 @@
   gap: 10px;
   align-items: center;
   margin-top: 20px;
-  padding: 20px 0;
 }
 
 .save-image-button {
   background: rgba(255, 255, 255, 0.9);
   border: none;
-  padding: 10px 20px;
+  padding: 12px 20px;
   border-radius: 10px;
-  font-size: 14px;
+  font-size: 15px;
   cursor: pointer;
   color: #667eea;
   font-weight: 600;
@@ -67,28 +66,92 @@
 }
 
 .save-image-button:hover {
-  transform: translateY(-2px);
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
   background: white;
 }
 
 .save-result-button {
-  background: rgba(76, 175, 80, 0.9);
+  background: rgba(255, 255, 255, 0.9);
   border: none;
-  padding: 10px 20px;
+  padding: 12px 20px;
   border-radius: 10px;
-  font-size: 14px;
+  font-size: 15px;
   cursor: pointer;
-  color: white;
+  color: #667eea;
   font-weight: 600;
   transition: transform 0.2s, box-shadow 0.2s;
 }
 
 .save-result-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(76, 175, 80, 0.4);
-  background: #4CAF50;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+  background: white;
 }
+
+.share-button-main {
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  padding: 12px 20px;
+  border-radius: 10px;
+  font-size: 15px;
+  cursor: pointer;
+  color: #667eea;
+  font-weight: 600;
+  transition: transform 0.2s, box-shadow 0.2s;
+  white-space: nowrap;
+}
+
+.share-button-main:hover {
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+  background: white;
+}
+
+/* 토스트 알림 */
+.toast-notification {
+  position: fixed;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.85);
+  color: white;
+  padding: 14px 24px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 500;
+  z-index: 10000;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  animation: toastSlideUp 0.3s ease-out, toastFadeOut 0.3s ease-in 1.7s;
+  pointer-events: none;
+}
+
+@keyframes toastSlideUp {
+  from {
+    transform: translateX(-50%) translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes toastFadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .toast-notification {
+    bottom: 120px;
+    padding: 12px 20px;
+    font-size: 14px;
+    max-width: calc(100vw - 40px);
+  }
+}
+
 
 .reset-view-button {
   background: rgba(255, 255, 255, 0.9);
@@ -164,7 +227,6 @@
   border-radius: 20px;
   overflow: hidden;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-  min-height: 600px;
   height: calc(100vh - 350px);
   position: relative;
   display: flex;
@@ -175,7 +237,6 @@
   width: 100%;
   height: 100%;
   flex: 1;
-  min-height: 600px;
   position: relative;
   overflow: hidden;
 }
@@ -346,6 +407,49 @@
   }
 }
 
+.popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.popup-header h2 {
+  color: #333;
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.popup-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.share-button {
+  background: #4a90e2;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+
+.share-button:hover {
+  background: #357abd;
+}
+
+.share-button:active {
+  background: #2a5f8f;
+}
+
 .close-button {
   position: absolute;
   top: 15px;
@@ -362,6 +466,7 @@
   align-items: center;
   justify-content: center;
   transition: background 0.2s;
+  z-index: 10;
 }
 
 .close-button:hover {
@@ -679,9 +784,9 @@
 /* 모바일에서 툴팁 위치 조정 */
 @media (max-width: 768px) {
   .hashtag-tooltip {
-    min-width: 180px;
+    min-width: 200px;
     max-width: calc(100vw - 40px); /* 화면 경계를 벗어나지 않도록 */
-    font-size: 12px;
+    font-size: 13px;
     padding: 10px 14px;
     left: 50%;
     transform: translateX(-50%);
@@ -699,12 +804,6 @@
   background: #f8f9fa;
   border-radius: 12px;
   padding: 18px;
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.analysis-card:hover {
-  transform: translateX(4px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .analysis-question {

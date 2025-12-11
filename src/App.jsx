@@ -1,13 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import FriendForm from './components/FriendForm';
 import CompatibilityGraph from './components/CompatibilityGraph';
 import SavedResultsList from './components/SavedResultsList';
+import { decodeFriendsFromUrl } from './utils/shareUtils';
 import './App.css';
 
 function App() {
   const [friends, setFriends] = useState([]);
   const [showGraph, setShowGraph] = useState(false);
   const [showSavedList, setShowSavedList] = useState(false);
+
+  // URL에서 공유된 데이터 로드
+  useEffect(() => {
+    const sharedFriends = decodeFriendsFromUrl();
+    if (sharedFriends && sharedFriends.length > 0) {
+      setFriends(sharedFriends);
+      setShowGraph(true);
+      // URL 정리 (선택사항)
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   const handleAddFriend = (friend) => {
     if (friends.length >= 8) {

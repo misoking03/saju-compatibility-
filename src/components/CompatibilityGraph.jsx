@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { calculateDayStem, calculateDayStemLunar, calculateFullSaju, calculateCompatibilityScore, getCompatibilityLabel, getCompatibilityStyle, RELATION_TAGS } from '../utils/saju';
+import { encodeFriendsToUrl, copyToClipboard } from '../utils/shareUtils';
 import './CompatibilityGraph.css';
 
 /**
@@ -154,7 +155,7 @@ const TEXT_TEMPLATES = {
       { 
         // 조건: 약한 일주 매칭만 (가치관/성격 매칭은 약간 있음)
         condition: (c) => c.hasModerateDayPillarMatch && c.hasNoComplementarity,
-        text: (names) => `${names[0]}님과 ${names[1]}님은\n가치관이 약간 조화를 이루지만\n에너지 보완은 없어요.`
+        text: (names) => `${names[0]}님과 ${names[1]}님은\n아주 안맞는건 아니지만\n서로 크게 매력은 못느껴요.`
       },
       { 
         // 조건: 천간합 또는 지지합 있음
@@ -230,6 +231,7 @@ const CompatibilityGraph = ({ friends, onBack }) => {
   const [resultTitle, setResultTitle] = useState('');
   const [containerSize, setContainerSize] = useState({ width: 800, height: 600 });
   const [activeTooltip, setActiveTooltip] = useState(null); // 툴팁 상태 관리
+  const [shareSuccess, setShareSuccess] = useState(false); // 공유 성공 상태
   const containerRef = useRef(null);
   const svgRef = useRef(null);
   const hashtagRef = useRef(null); // 해시태그 컨테이너 참조
@@ -671,6 +673,19 @@ const CompatibilityGraph = ({ friends, onBack }) => {
     return analysis;
   };
 
+  // 공유 함수
+  const handleShare = async () => {
+    const shareUrl = encodeFriendsToUrl(friends);
+    const success = await copyToClipboard(shareUrl);
+    
+    if (success) {
+      setShareSuccess(true);
+      setTimeout(() => setShareSuccess(false), 2000);
+    } else {
+      alert('URL 복사에 실패했습니다. 브라우저를 확인해주세요.');
+    }
+  };
+
   // 친구 데이터에 일간 및 사주 8글자 추가
   const friendsWithStem = friends.map(friend => {
     const dayStem = friend.isLunar
@@ -1003,7 +1018,7 @@ const CompatibilityGraph = ({ friends, onBack }) => {
         <button onClick={onBack} className="back-button">
           뒤로
         </button>
-        <h2>파트너십 분석 결과</h2>
+        <h2>우리 모임 관계도</h2>
       </div>
           {selectedNodeId && (
         <div className="selected-node-info">
@@ -1157,24 +1172,28 @@ const CompatibilityGraph = ({ friends, onBack }) => {
         </div>
       </div>
 
-      <div className="instruction-text">
-        <p>↑ 이름을 눌러 파트너십을 확인해 보세요</p>
-      </div>
 
       <div className="bottom-action-buttons">
+        <button
+          onClick={handleShare} 
+          className="share-button-main"
+          title="결과 공유하기"
+        >
+          공유
+        </button>
         <button
           onClick={handleSaveImage} 
           className="save-image-button"
           title="이미지로 저장"
         >
-          📷 이미지 저장
+          이미지 저장
         </button>
         <button
           onClick={handleSaveResultClick} 
           className="save-result-button"
           title="결과 저장"
         >
-          💾 결과 저장
+          결과 저장
         </button>
       </div>
 
@@ -1237,7 +1256,7 @@ const CompatibilityGraph = ({ friends, onBack }) => {
                   <div className="profile-header">
                     <span className="profile-name">{selectedLink.friend1Name}</span>
                     <span className="profile-ilju">
-                      {getIljuIcon(selectedLink.friend1Stem)} {selectedLink.friend1Stem}
+                      {selectedLink.friend1Stem}
                 </span>
               </div>
                   <div className="profile-tags">
@@ -1266,7 +1285,7 @@ const CompatibilityGraph = ({ friends, onBack }) => {
                   <div className="profile-header">
                     <span className="profile-name">{selectedLink.friend2Name}</span>
                     <span className="profile-ilju">
-                      {getIljuIcon(selectedLink.friend2Stem)} {selectedLink.friend2Stem}
+                      {selectedLink.friend2Stem}
                     </span>
           </div>
                   <div className="profile-tags">
@@ -1338,6 +1357,13 @@ const CompatibilityGraph = ({ friends, onBack }) => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 토스트 알림 */}
+      {shareSuccess && (
+        <div className="toast-notification">
+          ✓ URL이 복사되었습니다
         </div>
       )}
     </div>
